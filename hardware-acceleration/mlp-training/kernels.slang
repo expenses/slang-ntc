@@ -6,7 +6,7 @@ import network;
 import adam;
 
 [numthreads(256, 1, 1)]
-[require(spvGroupNonUniformBallot, spvGroupNonUniformArithmetic)]
+[require(subgroup_basic, subgroup_arithmetic)]
 #if __SLANG_APPLE__
 [require(metal)]
 #endif
