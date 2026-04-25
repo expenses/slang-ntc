@@ -115,7 +115,8 @@ batch_size = (64, 64)
 learning_rate = 0.001
 loss_output = spy.Tensor.empty_like(image)
 
-for optimize_counter in range(100_000):
+steps = 10_000
+for optimize_counter in range(steps):
     module.calculate_grads(
         seed=spy.wang_hash(seed=optimize_counter, warmup=2),
         batch_index=spy.grid(batch_size),
@@ -130,7 +131,7 @@ for optimize_counter in range(100_000):
 
     if optimize_counter % 100 == 0:
         print(f"{optimize_counter}")
-    if optimize_counter % 1000 == 0:
+    if optimize_counter % 1000 == 0 or optimize_counter == steps-1:
         module.loss(
             pixel=spy.call_id(), resolution=res, network=network, reference=image, _result=loss_output
         )
