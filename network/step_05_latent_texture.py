@@ -131,7 +131,9 @@ for optimize_counter in range(100_000):
             pixel=spy.call_id(), resolution=res, network=network, reference=image, _result=loss_output
         )
 
-        print(f"{optimize_counter} Loss: {np.mean(loss_output.to_numpy()):.5f}")
+        mse = np.mean(loss_output.to_numpy())
+        psnr = 10 * np.log10(1.0 / mse) if mse > 0 else float('inf')
+        print(f"{optimize_counter} Loss: {mse:.6f} PSNR: {psnr:.4f} dB")
 
 output = spy.Tensor.empty_like(image)
 module.render(pixel=spy.call_id(), resolution=res, network=network, _result=output)
