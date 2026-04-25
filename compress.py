@@ -3,6 +3,7 @@
 import slangpy as spy
 import numpy as np
 from pathlib import Path
+import time
 
 device = spy.create_device(spy.DeviceType.automatic, enable_debug_layers=True, include_paths=[Path(__file__).parent])
 module = spy.Module.load_from_file(device, "compress.slang")
@@ -124,6 +125,9 @@ for optimize_counter in range(100_000):
     )
     network.optimize(learning_rate, optimize_counter+1)
 
+    if optimize_counter == 0:
+        start = time.time()
+
     if optimize_counter % 100 == 0:
         # Show loss between neural texture and reference texture.
         loss_output = spy.Tensor.empty_like(image)
@@ -134,6 +138,8 @@ for optimize_counter in range(100_000):
         mse = np.mean(loss_output.to_numpy())
         psnr = 10 * np.log10(1.0 / mse) if mse > 0 else float('inf')
         print(f"{optimize_counter} Loss: {mse:.6f} PSNR: {psnr:.4f} dB")
+end = time.time()
+print(end - start)
 
 output = spy.Tensor.empty_like(image)
 module.render(pixel=spy.call_id(), resolution=res, network=network, _result=output)
