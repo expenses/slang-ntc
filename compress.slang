@@ -2,6 +2,12 @@
 
 import slangpy;
 
+[Differentiable]
+float16_t fma(float16_t a, float16_t b, float16_t c)
+{
+    return a * b + c;
+}
+
 struct NetworkParameters<int Inputs, int Outputs>
 {
     Tensor<float16_t, 1> biases;
@@ -52,11 +58,11 @@ struct NetworkParameters<int Inputs, int Outputs>
         for (int row = 0; row < Outputs; ++row)
         {
             // Sum up bias plus weighted inputs for 1 neuron
-            var sum = get_bias(row);
+            float16_t sum = float16_t(0.0h);
             [ForceUnroll]
             for (int col = 0; col < Inputs; ++col)
-                sum += get_weight(row, col) * x[col];
-            y[row] = sum;
+                sum = fma(get_weight(row, col), x[col], sum);
+            y[row] = sum + get_bias(row);
         }
 
         return y;

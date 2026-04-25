@@ -4,14 +4,15 @@ import slangpy as spy
 import numpy as np
 from pathlib import Path
 import time
+import sys
 
 device = spy.create_device(spy.DeviceType.automatic, enable_debug_layers=True, include_paths=[Path(__file__).parent])
 module = spy.Module.load_from_file(device, "compress.slang")
 
 # Load some materials.
 data_path = Path(__file__).parent
-image = spy.Tensor.load_from_image(device, data_path.joinpath("slangstars.png"), linearize=True)
-
+image = spy.Tensor.load_from_image(device, sys.argv[1], linearize=True)
+print(image.shape)
 
 class NetworkParameters(spy.InstanceList):
     def __init__(self, inputs: int, outputs: int):
@@ -86,9 +87,9 @@ class LatentTexture(spy.InstanceList):
 
 
 class Network(spy.InstanceList):
-    def __init__(self):
+    def __init__(self, shape):
         super().__init__(module["Network"])
-        self.latent_texture = LatentTexture(32, 32, 4)
+        self.latent_texture = LatentTexture(shape[0]//4, shape[1]//4, 4)
         self.layer0 = NetworkParameters(4, 32)
         self.layer1 = NetworkParameters(32, 32)
         self.layer2 = NetworkParameters(32, 3)
@@ -100,20 +101,14 @@ class Network(spy.InstanceList):
         self.layer1.optimize(learning_rate, optimize_counter)
         self.layer2.optimize(learning_rate, optimize_counter)
 
+network = Network(image.shape)
 
-network = Network()
-
-optimize_counter = 0
-
-# Slang will compile the shaders the first time we call into them (i.e. in the first iteration)
-print("Compiling shaders... this may take a while")
-
-res = spy.int2(256, 256)
+res = spy.int2(*image.shape)
 # Train a batch of samples at a time. Smaller batches train faster, but are more "jittery"
 # A better strategy is to use small batches at the start, and slowly increase them over time
 batch_size = (64, 64)
-
 learning_rate = 0.001
+loss_output = spy.Tensor.empty_like(image)
 
 for optimize_counter in range(100_000):
     module.calculate_grads(
@@ -129,18 +124,19 @@ for optimize_counter in range(100_000):
         start = time.time()
 
     if optimize_counter % 100 == 0:
-        # Show loss between neural texture and reference texture.
-        loss_output = spy.Tensor.empty_like(image)
+        print(f"{optimize_counter}")
+    if optimize_counter % 1000 == 0:
         module.loss(
             pixel=spy.call_id(), resolution=res, network=network, reference=image, _result=loss_output
         )
-
         mse = np.mean(loss_output.to_numpy())
         psnr = 10 * np.log10(1.0 / mse) if mse > 0 else float('inf')
-        print(f"{optimize_counter} Loss: {mse:.6f} PSNR: {psnr:.4f} dB")
+        print(f"Loss: {mse:.6f} PSNR: {psnr:.4f} dB")
 end = time.time()
 print(end - start)
 
 output = spy.Tensor.empty_like(image)
 module.render(pixel=spy.call_id(), resolution=res, network=network, _result=output)
 spy.Bitmap(output.to_numpy()).convert(component_type=spy.Bitmap.ComponentType.uint8, srgb_gamma=True).write("out.png")
+
+np.save("out.net", network.latent_texture.texture.to_numpy())
