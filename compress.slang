@@ -86,7 +86,7 @@ struct LatentTexture {
     }
 
     [Differentiable]
-    float16_t3 sample(no_diff inout float2 uv)
+    float16_t3 sample(no_diff float2 uv)
     {
         int2 size = {texture.shape[1], texture.shape[0]};
         // Convert to (fractional) texel position
@@ -128,9 +128,9 @@ struct Network {
     float3 eval(no_diff float2 uv)
     {
         let s_1 = latent_texture_1.sample(uv);
-        let s_2 = latent_texture_2.sample(uv);
+        let s_2 = latent_texture_2.sample(uv+0.5);
         let s_3 = latent_texture_3.sample(uv);
-        let s_4 = latent_texture_4.sample(uv);
+        let s_4 = latent_texture_4.sample(uv+0.5);
         float16_t half_inputs[12] = {
             s_1[0],
             s_1[1],
