@@ -69,7 +69,7 @@ struct NetworkParameters<int Inputs, int Outputs>
     }
 }
 
-struct LatentTexture<int NumLatents> {
+struct LatentTexture {
     Tensor<float16_t, 3> texture;
 
     AtomicTensor<float, 3> texture_grads;
@@ -86,7 +86,7 @@ struct LatentTexture<int NumLatents> {
     }
 
     [Differentiable]
-    float[NumLatents] sample(no_diff inout float2 uv)
+    float16_t3 sample(no_diff inout float2 uv)
     {
         int2 size = {texture.shape[1], texture.shape[0]};
         // Convert to (fractional) texel position
@@ -98,15 +98,15 @@ struct LatentTexture<int NumLatents> {
         // Get fractional part of texel position for interpolation
         uv = saturate(uv - float2(c0));
 
-        float result[NumLatents];
+        float16_t3 result;
         [ForceUnroll]
-        for (int i = 0; i < NumLatents; ++i) {
+        for (int i = 0; i < 3; ++i) {
             // Simple linear interpolation of latent texture
             float latent00 = get_latent(c0.x, c0.y, i);
             float latent10 = get_latent(c1.x, c0.y, i);
             float latent01 = get_latent(c0.x, c1.y, i);
             float latent11 = get_latent(c1.x, c1.y, i);
-            result[i] = lerp(lerp(latent00, latent10, uv.x), lerp(latent01, latent11, uv.x), uv.y);
+            result[i] = float16_t(lerp(lerp(latent00, latent10, uv.x), lerp(latent01, latent11, uv.x), uv.y));
         }
 
         return result;
@@ -116,20 +116,35 @@ struct LatentTexture<int NumLatents> {
 struct Network {
     static const int NumLatents = 4;
 
-    LatentTexture<NumLatents> latent_texture;
-    NetworkParameters<NumLatents, 32>  layer0;
+    LatentTexture latent_texture_1;
+    LatentTexture latent_texture_2;
+    LatentTexture latent_texture_3;
+    LatentTexture latent_texture_4;
+    NetworkParameters<12, 32>  layer0;
     NetworkParameters<32, 32> layer1;
     NetworkParameters<32, 3>  layer2;
 
     [Differentiable]
     float3 eval(no_diff float2 uv)
     {
-        float encoded_inputs[NumLatents] = latent_texture.sample(uv);
-        float16_t half_inputs[NumLatents];
-        [ForceUnroll]
-        for (int i = 0; i < 4; ++i)
-            half_inputs[i] = float16_t(encoded_inputs[i]);
-
+        let s_1 = latent_texture_1.sample(uv);
+        let s_2 = latent_texture_2.sample(uv);
+        let s_3 = latent_texture_3.sample(uv);
+        let s_4 = latent_texture_4.sample(uv);
+        float16_t half_inputs[12] = {
+            s_1[0],
+            s_1[1],
+            s_1[2],
+            s_2[0],
+            s_2[1],
+            s_2[2],
+            s_3[0],
+            s_3[1],
+            s_3[2],
+            s_4[0],
+            s_4[1],
+            s_4[2],
+        };
         float16_t output0[32] = layer0.forward(half_inputs);
         [ForceUnroll]
         for (int i = 0; i < 32; ++i)

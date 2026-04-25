@@ -57,18 +57,17 @@ class NetworkParameters(spy.InstanceList):
 
 
 class LatentTexture(spy.InstanceList):
-    def __init__(self, width: int, height: int, num_latents: int):
-        super().__init__(module[f"LatentTexture<{num_latents}>"])
+    def __init__(self, width: int, height: int):
+        super().__init__(module["LatentTexture"])
         self.width = width
         self.height = height
-        self.num_latents = num_latents
 
         # Initialize to random latent texture
-        initial_latents = np.random.uniform(0.0, 1.0, (height, width, num_latents)).astype("float16")
+        initial_latents = np.random.uniform(0.0, 1.0, (height, width, 3)).astype("float16")
         self.texture = spy.Tensor.from_numpy(device, initial_latents)
 
         # Gradients for the latent texture
-        self.texture_grads = spy.Tensor.from_numpy(device,np.zeros((height, width, num_latents)).astype("float32"))
+        self.texture_grads = spy.Tensor.from_numpy(device,np.zeros((height, width, 3)).astype("float32"))
 
         # Temp data for Adam optimizer.
         self.m_texture = spy.Tensor.zeros_like(self.texture_grads)
@@ -89,14 +88,20 @@ class LatentTexture(spy.InstanceList):
 class Network(spy.InstanceList):
     def __init__(self, shape):
         super().__init__(module["Network"])
-        self.latent_texture = LatentTexture(shape[0]//4, shape[1]//4, 4)
-        self.layer0 = NetworkParameters(4, 32)
+        self.latent_texture_1 = LatentTexture(shape[0]//4, shape[1]//4)
+        self.latent_texture_2 = LatentTexture(shape[0]//4, shape[1]//4)
+        self.latent_texture_3 = LatentTexture(shape[0]//8, shape[1]//8)
+        self.latent_texture_4 = LatentTexture(shape[0]//8, shape[1]//8)
+        self.layer0 = NetworkParameters(12, 32)
         self.layer1 = NetworkParameters(32, 32)
         self.layer2 = NetworkParameters(32, 3)
 
     # Calls the Slang 'optimize' function for the layer.
     def optimize(self, learning_rate: float, optimize_counter: int):
-        self.latent_texture.optimize(learning_rate, optimize_counter)
+        self.latent_texture_1.optimize(learning_rate, optimize_counter)
+        self.latent_texture_2.optimize(learning_rate, optimize_counter)
+        self.latent_texture_3.optimize(learning_rate, optimize_counter)
+        self.latent_texture_4.optimize(learning_rate, optimize_counter)
         self.layer0.optimize(learning_rate, optimize_counter)
         self.layer1.optimize(learning_rate, optimize_counter)
         self.layer2.optimize(learning_rate, optimize_counter)
@@ -131,7 +136,7 @@ for optimize_counter in range(100_000):
         )
         mse = np.mean(loss_output.to_numpy())
         psnr = 10 * np.log10(1.0 / mse) if mse > 0 else float('inf')
-        print(f"Loss: {mse:.6f} PSNR: {psnr:.4f} dB")
+        print(f"Loss: {mse:.8f} PSNR: {psnr:.4f} dB")
 end = time.time()
 print(end - start)
 
@@ -139,4 +144,4 @@ output = spy.Tensor.empty_like(image)
 module.render(pixel=spy.call_id(), resolution=res, network=network, _result=output)
 spy.Bitmap(output.to_numpy()).convert(component_type=spy.Bitmap.ComponentType.uint8, srgb_gamma=True).write("out.png")
 
-np.save("out.net", network.latent_texture.texture.to_numpy())
+#np.save("out.net", network.latent_texture.texture.to_numpy())
