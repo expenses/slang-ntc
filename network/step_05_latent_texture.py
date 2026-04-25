@@ -1,17 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 
-from app import App
 import slangpy as spy
 import numpy as np
 from pathlib import Path
 
-# Create the app and load the slang module.
-app = App(width=512 * 3 + 10 * 2, height=512, title="Network Example")
-module = spy.Module.load_from_file(app.device, "step_05_latent_texture.slang")
+device = spy.create_device(spy.DeviceType.automatic, enable_debug_layers=True, include_paths=[Path(__file__).parent])
+module = spy.Module.load_from_file(device, "step_05_latent_texture.slang")
 
 # Load some materials.
 data_path = Path(__file__).parent
-image = spy.Tensor.load_from_image(app.device, data_path.joinpath("slangstars.png"), linearize=True)
+image = spy.Tensor.load_from_image(device, data_path.joinpath("slangstars.png"), linearize=True)
 
 
 class NetworkParameters(spy.InstanceList):
@@ -21,9 +19,9 @@ class NetworkParameters(spy.InstanceList):
         self.outputs = outputs
 
         # Biases and weights for the layer.
-        self.biases = spy.Tensor.from_numpy(app.device, np.zeros(outputs).astype("float32"))
+        self.biases = spy.Tensor.from_numpy(device, np.zeros(outputs).astype("float32"))
         self.weights = spy.Tensor.from_numpy(
-            app.device, np.random.uniform(-0.5, 0.5, (outputs, inputs)).astype("float32")
+            device, np.random.uniform(-0.5, 0.5, (outputs, inputs)).astype("float32")
         )
 
         # Gradients for the biases and weights.
@@ -65,7 +63,7 @@ class LatentTexture(spy.InstanceList):
         
         # Initialize to random latent texture
         initial_latents = np.random.uniform(0.0, 1.0, (height, width, num_latents)).astype("float32")
-        self.texture = spy.Tensor.from_numpy(app.device, initial_latents)
+        self.texture = spy.Tensor.from_numpy(device, initial_latents)
 
         # Gradients for the latent texture
         self.texture_grads = spy.Tensor.zeros_like(self.texture)
@@ -109,46 +107,28 @@ optimize_counter = 0
 # Slang will compile the shaders the first time we call into them (i.e. in the first iteration)
 print("Compiling shaders... this may take a while")
 
-while app.process_events():
+res = spy.int2(256, 256)
+# Train a batch of samples at a time. Smaller batches train faster, but are more "jittery"
+# A better strategy is to use small batches at the start, and slowly increase them over time
+batch_size = (64, 64)
 
-    offset = 0
-    # Blit reference texture
-    app.blit(image, size=spy.int2(512), offset=spy.int2(offset, 0), tonemap=False, bilinear=True)
-    offset += 512 + 10
-    res = spy.int2(256, 256)
-    # Train a batch of samples at a time. Smaller batches train faster, but are more "jittery"
-    # A better strategy is to use small batches at the start, and slowly increase them over time
-    batch_size = (64, 64)
+learning_rate = 0.001
 
-    # Render current neural texture
-    lr_output = spy.Tensor.empty_like(image)
-    module.render(pixel=spy.call_id(), resolution=res, network=network, _result=lr_output)
-    app.blit(lr_output, size=spy.int2(512, 512), offset=spy.int2(offset, 0), tonemap=False, bilinear=True)
-    offset += 512 + 10
-
-    # Show loss between neural texture and reference texture.
-    loss_output = spy.Tensor.empty_like(image)
-    module.loss(
-        pixel=spy.call_id(), resolution=res, network=network, reference=image, _result=loss_output
+for optimize_counter in range(100_000):
+    module.calculate_grads(
+        seed=spy.wang_hash(seed=optimize_counter, warmup=2),
+        batch_index=spy.grid(batch_size),
+        batch_size=spy.int2(batch_size),
+        reference=image,
+        network=network,
     )
-    app.blit(loss_output, size=spy.int2(512, 512), offset=spy.int2(offset, 0), tonemap=False)
+    network.optimize(learning_rate, optimize_counter+1)
 
-    learning_rate = 0.001
-
-    # NOTE: For faster feedback we use a low number of iterations (20) per frame. This will be more efficient if you turn it up.
-    for i in range(20):
-        module.calculate_grads(
-            seed=spy.wang_hash(seed=optimize_counter, warmup=2),
-            batch_index=spy.grid(batch_size),
-            batch_size=spy.int2(batch_size),
-            reference=image,
-            network=network,
+    if optimize_counter % 100 == 0:
+        # Show loss between neural texture and reference texture.
+        loss_output = spy.Tensor.empty_like(image)
+        module.loss(
+            pixel=spy.call_id(), resolution=res, network=network, reference=image, _result=loss_output
         )
-        optimize_counter += 1
-
-        network.optimize(learning_rate, optimize_counter)
-
-    print(f"Loss: {np.mean(loss_output.to_numpy()):.5f}")
-
-    # Present the window.
-    app.present()
+    
+        print(f"{optimize_counter} Loss: {np.mean(loss_output.to_numpy()):.5f}")
