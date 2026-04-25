@@ -63,19 +63,19 @@ class LatentTexture(spy.InstanceList):
         self.num_latents = num_latents
 
         # Initialize to random latent texture
-        initial_latents = np.random.uniform(0.0, 1.0, (height, width, num_latents)).astype("float32")
+        initial_latents = np.random.uniform(0.0, 1.0, (height, width, num_latents)).astype("float16")
         self.texture = spy.Tensor.from_numpy(device, initial_latents)
 
         # Gradients for the latent texture
-        self.texture_grads = spy.Tensor.zeros_like(self.texture)
+        self.texture_grads = spy.Tensor.from_numpy(device,np.zeros((height, width, num_latents)).astype("float32"))
 
         # Temp data for Adam optimizer.
-        self.m_texture = spy.Tensor.zeros_like(self.texture)
-        self.v_texture = spy.Tensor.zeros_like(self.texture)
+        self.m_texture = spy.Tensor.zeros_like(self.texture_grads)
+        self.v_texture = spy.Tensor.zeros_like(self.texture_grads)
 
     # Calls the Slang 'optimize' function for biases and weights
     def optimize(self, learning_rate: float, optimize_counter: int):
-        module.optimizer_step(
+        module.optimizer_step_half(
             self.texture,
             self.texture_grads,
             self.m_texture,

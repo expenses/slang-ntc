@@ -64,14 +64,14 @@ struct NetworkParameters<int Inputs, int Outputs>
 }
 
 struct LatentTexture<int NumLatents> {
-    Tensor<float, 3> texture;
+    Tensor<float16_t, 3> texture;
 
     AtomicTensor<float, 3> texture_grads;
 
     [BackwardDerivative(get_latent_bwd)]
     float get_latent(int x, int y, int latent_index)
     {
-        return texture[y, x, latent_index];
+        return float(texture[y, x, latent_index]);
     }
 
     void get_latent_bwd(int x, int y, int latent_index, float latent_grad)
@@ -189,6 +189,33 @@ struct LCG
         return (next_uint() >> 8) * 0x1p-24;
     }
 };
+
+
+void optimizer_step_half(inout float16_t primal, inout float grad, inout float mean, inout float variance, float learning_rate, int iteration)
+{
+    // Default Adam values.
+    const float ADAM_BETA_1 = 0.9;
+    const float ADAM_BETA_2 = 0.999;
+    const float ADAM_EPSILON = 1e-8;
+
+    // Running average of gradient and square gradient (== variance)
+    mean = lerp(grad, mean, ADAM_BETA_1);
+    variance = lerp(grad * grad, variance, ADAM_BETA_2);
+
+    // The running average is initialized with zeros, and underestimates
+    // the true values at the beginning. Adam divides by a compensation factor
+    float mHat = mean / (1.0f - pow(ADAM_BETA_1, iteration));
+    float vHat = variance / (1.0f - pow(ADAM_BETA_2, iteration));
+    // Compute the adam step by scaling the mean gradient by the learning rate and the variance estimate
+    float step = learning_rate * mHat / (sqrt(vHat) + ADAM_EPSILON);
+
+    // Take an adam step
+    primal -= step;
+
+    // Because we now accumulate gradients, we need to clear the gradient to zero before the next iteration
+    grad = 0.0f;
+}
+
 
 void optimizer_step(inout float primal, inout float grad, inout float mean, inout float variance, float learning_rate, int iteration)
 {
