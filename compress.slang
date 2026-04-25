@@ -148,32 +148,20 @@ struct Network {
         float16_t output0[32] = layer0.forward(half_inputs);
         [ForceUnroll]
         for (int i = 0; i < 32; ++i)
-            output0[i] = leakyReLU(output0[i]);
+            output0[i] = relu(output0[i]);
         float16_t output1[32] = layer1.forward(output0);
         [ForceUnroll]
         for (int i = 0; i < 32; ++i)
-            output1[i] = leakyReLU(output1[i]);
+            output1[i] = relu(output1[i]);
         float16_t output2[3] = layer2.forward(output1);
-        [ForceUnroll]
-        for (int i = 0; i < 3; ++i)
-            output2[i] = exp(output2[i]);
         return float3(output2[0], output2[1], output2[2]);
     }
 }
 
 [Differentiable]
-float reLU(float x)
+float16_t relu(float16_t x)
 {
-    return max(x, 0.0f);
-}
-
-[Differentiable]
-float16_t leakyReLU(float16_t x, float16_t negativeSlope = 0.01h)
-{
-    if (x > 0.0h)
-        return x;
-    else
-        return x * negativeSlope;
+    return max(x, float16_t(0.0));
 }
 
 // "Render" the neural texture
