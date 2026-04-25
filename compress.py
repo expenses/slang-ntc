@@ -20,20 +20,20 @@ class NetworkParameters(spy.InstanceList):
         self.outputs = outputs
 
         # Biases and weights for the layer.
-        self.biases = spy.Tensor.from_numpy(device, np.zeros(outputs).astype("float32"))
+        self.biases = spy.Tensor.from_numpy(device, np.zeros(outputs).astype("float16"))
         self.weights = spy.Tensor.from_numpy(
-            device, np.random.uniform(-0.5, 0.5, (outputs, inputs)).astype("float32")
+            device, np.random.uniform(-0.5, 0.5, (outputs, inputs)).astype("float16")
         )
 
         # Gradients for the biases and weights.
-        self.biases_grad = spy.Tensor.zeros_like(self.biases)
-        self.weights_grad = spy.Tensor.zeros_like(self.weights)
+        self.biases_grad = spy.Tensor.from_numpy(device, np.zeros(outputs).astype("float32"))
+        self.weights_grad = spy.Tensor.from_numpy(device, np.zeros((outputs, inputs)).astype("float32"))
 
         # Temp data for Adam optimizer.
-        self.m_biases = spy.Tensor.zeros_like(self.biases)
-        self.m_weights = spy.Tensor.zeros_like(self.weights)
-        self.v_biases = spy.Tensor.zeros_like(self.biases)
-        self.v_weights = spy.Tensor.zeros_like(self.weights)
+        self.m_biases = spy.Tensor.zeros_like(self.biases_grad)
+        self.m_weights = spy.Tensor.zeros_like(self.weights_grad)
+        self.v_biases = spy.Tensor.zeros_like(self.biases_grad)
+        self.v_weights = spy.Tensor.zeros_like(self.weights_grad)
 
     # Calls the Slang 'optimize' function for biases and weights
     def optimize(self, learning_rate: float, optimize_counter: int):
@@ -75,7 +75,7 @@ class LatentTexture(spy.InstanceList):
 
     # Calls the Slang 'optimize' function for biases and weights
     def optimize(self, learning_rate: float, optimize_counter: int):
-        module.optimizer_step_half(
+        module.optimizer_step(
             self.texture,
             self.texture_grads,
             self.m_texture,

@@ -4,8 +4,8 @@ import slangpy;
 
 struct NetworkParameters<int Inputs, int Outputs>
 {
-    Tensor<float, 1> biases;
-    Tensor<float, 2> weights;
+    Tensor<float16_t, 1> biases;
+    Tensor<float16_t, 2> weights;
 
     // Unlike the mipmapping example, where the parameters for each texel are independent and
     // each texel only affect the material for one sample, the network weights are shared for
@@ -15,25 +15,25 @@ struct NetworkParameters<int Inputs, int Outputs>
     AtomicTensor<float, 2> weights_grad;
 
     [Differentiable]
-    float get_bias(int neuron)
+    float16_t get_bias(int neuron)
     {
         return biases.load(neuron);
     }
     [Differentiable]
-    float get_weight(int neuron, int input)
+    float16_t get_weight(int neuron, int input)
     {
         return weights.load(neuron, input);
     }
 
     [BackwardDerivativeOf(get_bias)]
-    void get_bias_bwd(int neuron, float grad)
+    void get_bias_bwd(int neuron, float16_t grad)
     {
         // .set on an atomic tensor atomically adds the result
         biases_grad.add(neuron, grad);
     }
 
     [BackwardDerivativeOf(get_weight)]
-    void get_weight_bwd(int neuron, int input, float grad)
+    void get_weight_bwd(int neuron, int input, float16_t grad)
     {
         // .set on an atomic tensor atomically adds the result
         weights_grad.add(neuron, input, grad);
@@ -41,9 +41,9 @@ struct NetworkParameters<int Inputs, int Outputs>
 
     // Evaluate all neurons in the layer
     [Differentiable]
-    float[Outputs] forward(float[Inputs] x)
+    float16_t[Outputs] forward(float16_t[Inputs] x)
     {
-        float[Outputs] y;
+        float16_t[Outputs] y;
         // For optimal runtime performance, using [ForceUnroll] here can be better. However, the downstream
         // compiler on some platforms (in particular, the DXC compiler on D3D12) may not cope well with
         // unrolled loops and compilation times grow exponentially. Using MaxIters on the outer loop
@@ -119,16 +119,20 @@ struct Network {
     float3 eval(no_diff float2 uv)
     {
         float encoded_inputs[NumLatents] = latent_texture.sample(uv);
+        float16_t half_inputs[NumLatents];
+        [ForceUnroll]
+        for (int i = 0; i < 4; ++i)
+            half_inputs[i] = float16_t(encoded_inputs[i]);
 
-        float output0[32] = layer0.forward(encoded_inputs);
+        float16_t output0[32] = layer0.forward(half_inputs);
         [ForceUnroll]
         for (int i = 0; i < 32; ++i)
             output0[i] = leakyReLU(output0[i]);
-        float output1[32] = layer1.forward(output0);
+        float16_t output1[32] = layer1.forward(output0);
         [ForceUnroll]
         for (int i = 0; i < 32; ++i)
             output1[i] = leakyReLU(output1[i]);
-        float output2[3] = layer2.forward(output1);
+        float16_t output2[3] = layer2.forward(output1);
         [ForceUnroll]
         for (int i = 0; i < 3; ++i)
             output2[i] = exp(output2[i]);
@@ -143,9 +147,9 @@ float reLU(float x)
 }
 
 [Differentiable]
-float leakyReLU(float x, float negativeSlope = 0.01f)
+float16_t leakyReLU(float16_t x, float16_t negativeSlope = 0.01h)
 {
-    if (x > 0.0f)
+    if (x > 0.0h)
         return x;
     else
         return x * negativeSlope;
@@ -191,7 +195,7 @@ struct LCG
 };
 
 
-void optimizer_step_half(inout float16_t primal, inout float grad, inout float mean, inout float variance, float learning_rate, int iteration)
+void optimizer_step(inout float16_t primal, inout float grad, inout float mean, inout float variance, float learning_rate, int iteration)
 {
     // Default Adam values.
     const float ADAM_BETA_1 = 0.9;
@@ -210,33 +214,7 @@ void optimizer_step_half(inout float16_t primal, inout float grad, inout float m
     float step = learning_rate * mHat / (sqrt(vHat) + ADAM_EPSILON);
 
     // Take an adam step
-    primal -= step;
-
-    // Because we now accumulate gradients, we need to clear the gradient to zero before the next iteration
-    grad = 0.0f;
-}
-
-
-void optimizer_step(inout float primal, inout float grad, inout float mean, inout float variance, float learning_rate, int iteration)
-{
-    // Default Adam values.
-    const float ADAM_BETA_1 = 0.9;
-    const float ADAM_BETA_2 = 0.999;
-    const float ADAM_EPSILON = 1e-8;
-
-    // Running average of gradient and square gradient (== variance)
-    mean = lerp(grad, mean, ADAM_BETA_1);
-    variance = lerp(grad * grad, variance, ADAM_BETA_2);
-
-    // The running average is initialized with zeros, and underestimates
-    // the true values at the beginning. Adam divides by a compensation factor
-    float mHat = mean / (1.0f - pow(ADAM_BETA_1, iteration));
-    float vHat = variance / (1.0f - pow(ADAM_BETA_2, iteration));
-    // Compute the adam step by scaling the mean gradient by the learning rate and the variance estimate
-    float step = learning_rate * mHat / (sqrt(vHat) + ADAM_EPSILON);
-
-    // Take an adam step
-    primal -= step;
+    primal -= float16_t(step);
 
     // Because we now accumulate gradients, we need to clear the gradient to zero before the next iteration
     grad = 0.0f;
