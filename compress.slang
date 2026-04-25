@@ -113,16 +113,14 @@ struct LatentTexture {
     }
 }
 
-struct Network {
-    static const int NumLatents = 4;
-
+struct Network<int HiddenLayerSize> {
     LatentTexture latent_texture_1;
     LatentTexture latent_texture_2;
     LatentTexture latent_texture_3;
     LatentTexture latent_texture_4;
-    NetworkParameters<12, 32>  layer0;
-    NetworkParameters<32, 32> layer1;
-    NetworkParameters<32, 3>  layer2;
+    NetworkParameters<12, HiddenLayerSize>  layer0;
+    NetworkParameters<HiddenLayerSize, HiddenLayerSize> layer1;
+    NetworkParameters<HiddenLayerSize, 3>  layer2;
 
     [Differentiable]
     float3 eval(no_diff float2 uv)
@@ -145,13 +143,13 @@ struct Network {
             s_4[1],
             s_4[2],
         };
-        float16_t output0[32] = layer0.forward(half_inputs);
+        float16_t output0[HiddenLayerSize] = layer0.forward(half_inputs);
         [ForceUnroll]
-        for (int i = 0; i < 32; ++i)
+        for (int i = 0; i < HiddenLayerSize; ++i)
             output0[i] = relu(output0[i]);
-        float16_t output1[32] = layer1.forward(output0);
+        float16_t output1[HiddenLayerSize] = layer1.forward(output0);
         [ForceUnroll]
-        for (int i = 0; i < 32; ++i)
+        for (int i = 0; i < HiddenLayerSize; ++i)
             output1[i] = relu(output1[i]);
         float16_t output2[3] = layer2.forward(output1);
         return float3(output2[0], output2[1], output2[2]);
@@ -166,14 +164,14 @@ float16_t relu(float16_t x)
 
 // "Render" the neural texture
 [Differentiable]
-float3 render(int2 pixel, int2 resolution, Network network)
+float3 render<int HiddenLayerSize>(int2 pixel, int2 resolution, Network<HiddenLayerSize> network)
 {
     float2 uv = (float2(pixel) + 0.5f) / float2(resolution);
     return network.eval(uv);
 }
 
 [Differentiable]
-float3 loss(int2 pixel, int2 resolution, no_diff float3 reference, Network network)
+float3 loss<int HiddenLayerSize>(int2 pixel, int2 resolution, no_diff float3 reference, Network<HiddenLayerSize> network)
 {
     float3 color = render(pixel, resolution, network);
     float3 error = color - reference;
@@ -229,7 +227,7 @@ void optimizer_step(inout float16_t primal, inout float grad, inout float mean, 
     grad = 0.0f;
 }
 
-void calculate_grads(uint seed, int2 batch_index, int2 batch_size, Tensor<float3, 2> reference, Network network)
+void calculate_grads<int HiddenLayerSize>(uint seed, int2 batch_index, int2 batch_size, Tensor<float3, 2> reference, Network<HiddenLayerSize> network)
 {
     // Pick a random pixel for computing the loss
     // First, sample a random UV within our cell of the training batch grid

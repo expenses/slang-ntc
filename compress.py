@@ -87,14 +87,15 @@ class LatentTexture(spy.InstanceList):
 
 class Network(spy.InstanceList):
     def __init__(self, shape):
-        super().__init__(module["Network"])
+        hidden_layer_size = 56
+        super().__init__(module[f"Network<{hidden_layer_size}>"])
         self.latent_texture_1 = LatentTexture(shape[0]//4, shape[1]//4)
         self.latent_texture_2 = LatentTexture(shape[0]//4, shape[1]//4)
         self.latent_texture_3 = LatentTexture(shape[0]//8, shape[1]//8)
         self.latent_texture_4 = LatentTexture(shape[0]//8, shape[1]//8)
-        self.layer0 = NetworkParameters(12, 32)
-        self.layer1 = NetworkParameters(32, 32)
-        self.layer2 = NetworkParameters(32, 3)
+        self.layer0 = NetworkParameters(12, hidden_layer_size)
+        self.layer1 = NetworkParameters(hidden_layer_size, hidden_layer_size)
+        self.layer2 = NetworkParameters(hidden_layer_size, 3)
 
     # Calls the Slang 'optimize' function for the layer.
     def optimize(self, learning_rate: float, optimize_counter: int):
