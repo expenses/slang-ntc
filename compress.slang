@@ -175,7 +175,7 @@ float3 loss<int HiddenLayerSize>(int2 pixel, int2 resolution, no_diff float3 ref
 {
     float3 color = render(pixel, resolution, network);
     float3 error = color - reference;
-    return error * error;
+    return abs(error);
 }
 
 struct LCG

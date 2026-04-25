@@ -136,9 +136,9 @@ for optimize_counter in range(steps):
         module.loss(
             pixel=spy.call_id(), resolution=res, network=network, reference=image, _result=loss_output
         )
-        mse = np.mean(loss_output.to_numpy())
-        psnr = 10 * np.log10(1.0 / mse) if mse > 0 else float('inf')
-        print(f"Loss: {mse:.8f} PSNR: {psnr:.4f} dB")
+        mae = np.mean(loss_output.to_numpy())
+        psnr = 20 * np.log10(1.0 / mae) if mae > 0 else float('inf')
+        print(f"Loss: {mae:.8f} PSNR: {psnr:.4f} dB")
 end = time.time()
 print(end - start)
 
