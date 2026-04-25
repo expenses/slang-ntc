@@ -60,7 +60,7 @@ class LatentTexture(spy.InstanceList):
         self.width = width
         self.height = height
         self.num_latents = num_latents
-        
+
         # Initialize to random latent texture
         initial_latents = np.random.uniform(0.0, 1.0, (height, width, num_latents)).astype("float32")
         self.texture = spy.Tensor.from_numpy(device, initial_latents)
@@ -130,5 +130,9 @@ for optimize_counter in range(100_000):
         module.loss(
             pixel=spy.call_id(), resolution=res, network=network, reference=image, _result=loss_output
         )
-    
+
         print(f"{optimize_counter} Loss: {np.mean(loss_output.to_numpy()):.5f}")
+
+output = spy.Tensor.empty_like(image)
+module.render(pixel=spy.call_id(), resolution=res, network=network, _result=output)
+spy.Bitmap(output.to_numpy()).convert(component_type=spy.Bitmap.ComponentType.uint8, srgb_gamma=True).write("out.png")
