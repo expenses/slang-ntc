@@ -285,6 +285,31 @@ void optimizer_step(
     grad = 0.0f;
 }
 
+void sum_loss<int HiddenLayerSize, int NumChannels>(
+    int2 pixel,
+    int resolution,
+    Texture2D<float4>[] reference,
+    SamplerState samp,
+    Network<HiddenLayerSize, NumChannels> network,
+    AtomicTensor<float,1> total
+) {
+    let loss = loss(
+        (float2(pixel) + 0.5f) / float2(resolution),
+        0.0f,
+        reference,
+        samp,
+        network
+    );
+    float local_sum = 0.0;
+    for (int i = 0; i < NumChannels; ++i) {
+        local_sum += loss[i];
+    }
+    let wave_sum = WaveActiveSum(local_sum);
+    if (WaveIsFirstLane()) {
+        total.add(0, wave_sum);
+    }
+}
+
 void calculate_grads<int HiddenLayerSize, int NumChannels>(
     uint seed,
     int2 batch_index,

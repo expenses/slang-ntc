@@ -154,10 +154,6 @@ network = Network(args.size, num_channels)
 batch_size = (64, 64)
 learning_rate = 0.001
 
-loss_output = spy.Tensor.from_numpy(
-    device, np.zeros((tex_size, tex_size, num_channels)).astype("float32")
-)
-
 samp = device.create_sampler(spy.SamplerDesc())
 print(samp)
 
@@ -178,15 +174,16 @@ for optimize_counter in range(args.steps):
     if optimize_counter % 100 == 0:
         print(f"{optimize_counter}")
     if optimize_counter % 1000 == 0 or optimize_counter == args.steps - 1:
-        module.calculate_loss(
-            pixel=spy.call_id(),
+        loss_output = spy.Tensor.from_numpy(device, np.zeros((1,)).astype("float32"))
+        module.sum_loss(
+            pixel=spy.grid((tex_size,tex_size)),
             resolution=tex_size,
             network=network,
             reference=tex,
-            _result=loss_output,
+            total=loss_output,
             samp=samp,
         )
-        mae = np.mean(loss_output.to_numpy())
+        mae = loss_output.to_numpy()[0] / tex_size / tex_size / num_channels;
         psnr = 20 * np.log10(1.0 / mae) if mae > 0 else float("inf")
         print(f"Loss: {mae:.8f} PSNR: {psnr:.4f} dB")
 end = time.time()
