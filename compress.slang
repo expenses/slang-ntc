@@ -179,13 +179,13 @@ float[NumChannels] render<int HiddenLayerSize, int NumChannels>(int2 pixel, int2
 }
 
 [Differentiable]
-float[NumChannels] loss<int HiddenLayerSize, int NumChannels>(int2 pixel, int2 resolution, Texture2DArray<float3> reference, Network<HiddenLayerSize, NumChannels> network)
+float[NumChannels] loss<int HiddenLayerSize, int NumChannels>(int2 pixel, int2 resolution, Texture2D<float4>[] reference, Network<HiddenLayerSize, NumChannels> network)
 {
     let color = render(pixel, resolution, network);
     float[NumChannels] error;
     [ForceUnroll]
     for (int i = 0; i < NumChannels/3; ++i) {
-        float3 sample = reference[int3(pixel.x, pixel.y, i)];
+        float3 sample = reference[i][int2(pixel.x, pixel.y)].rgb;
         error[i*3] = abs(sample[0] - color[i*3]);
         error[i*3+1] = abs(sample[1] - color[i*3+1]);
         error[i*3+2] = abs(sample[2] - color[i*3+2]);
@@ -242,7 +242,7 @@ void optimizer_step(inout float16_t primal, inout float grad, inout float mean, 
     grad = 0.0f;
 }
 
-void calculate_grads<int HiddenLayerSize, int NumChannels>(uint seed, int2 batch_index, int2 batch_size, int2 resolution, Texture2DArray<float3> reference, Network<HiddenLayerSize, NumChannels> network)
+void calculate_grads<int HiddenLayerSize, int NumChannels>(uint seed, int2 batch_index, int2 batch_size, int2 resolution, Texture2D<float4>[] reference, Network<HiddenLayerSize, NumChannels> network)
 {
     // Pick a random pixel for computing the loss
     // First, sample a random UV within our cell of the training batch grid

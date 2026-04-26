@@ -16,8 +16,8 @@ module = spy.Module.load_from_file(device, "compress.slang")
 
 # Load some materials.
 data_path = Path(__file__).parent
-tex = spy.TextureLoader(device).load_texture_array(sys.argv[1:])
-num_channels = tex.array_length * 3
+tex = spy.TextureLoader(device).load_textures(sys.argv[1:])
+num_channels = len(tex) * 3
 
 class NetworkParameters(spy.InstanceList):
     def __init__(self, inputs: int, outputs: int):
@@ -122,15 +122,15 @@ class Network(spy.InstanceList):
         self.layer2.optimize(learning_rate, optimize_counter)
 
 
-network = Network([tex.width,tex.height,num_channels])
+network = Network([tex[0].width,tex[0].height,num_channels])
 
-res = spy.int2(tex.width, tex.height)
+res = spy.int2(tex[0].width, tex[0].height)
 # Train a batch of samples at a time. Smaller batches train faster, but are more "jittery"
 # A better strategy is to use small batches at the start, and slowly increase them over time
 batch_size = (64, 64)
 learning_rate = 0.001
 
-loss_output = spy.Tensor.from_numpy(device, np.zeros((tex.height, tex.width, num_channels)).astype("float32"))
+loss_output = spy.Tensor.from_numpy(device, np.zeros((tex[0].height, tex[0].width, num_channels)).astype("float32"))
 
 steps = 10_000
 for optimize_counter in range(steps):
