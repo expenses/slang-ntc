@@ -65,25 +65,25 @@ struct NetworkParameters<int Inputs, int Outputs> {
 
 struct LatentTexture {
     Tensor<float16_t, 1> texture;
-    uint width;
-    uint height;
+    int size;
 
     AtomicTensor<float, 1> texture_grads;
 
-    [BackwardDerivative(get_latent_bwd)]
-    float get_latent(int x, int y, int latent_index) {
-        let index = latent_index * (width*height) + y * width + x;
-        return float(texture[index]);
+    int get_index(int x, int y, int channel, int mip_level) {
+        return channel * (size*size) + y * size + x;
     }
 
-    void get_latent_bwd(int x, int y, int latent_index, float latent_grad) {
-        let index = latent_index * (width*height) + y * width + x;
-        texture_grads.add(index, latent_grad);
+    [BackwardDerivative(get_latent_bwd)]
+    float get_latent(int x, int y, int channel, int mip_level) {
+        return float(texture[get_index(x, y, channel, mip_level)]);
+    }
+
+    void get_latent_bwd(int x, int y, int channel, int mip_level, float latent_grad) {
+        texture_grads.add(get_index(x, y, channel, mip_level), latent_grad);
     }
 
     [Differentiable]
     float16_t3 sample(no_diff float2 uv, no_diff float mip_level) {
-        int2 size = {width, height};
         // Convert to (fractional) texel position
         uv *= float2(size - 1);
         // Get (clamped) integer positions of texel corners
@@ -97,10 +97,10 @@ struct LatentTexture {
         [ForceUnroll]
         for (int i = 0; i < 3; ++i) {
             // Simple linear interpolation of latent texture
-            float latent00 = get_latent(c0.x, c0.y, i);
-            float latent10 = get_latent(c1.x, c0.y, i);
-            float latent01 = get_latent(c0.x, c1.y, i);
-            float latent11 = get_latent(c1.x, c1.y, i);
+            float latent00 = get_latent(c0.x, c0.y, i, 0);
+            float latent10 = get_latent(c1.x, c0.y, i, 0);
+            float latent01 = get_latent(c0.x, c1.y, i, 0);
+            float latent11 = get_latent(c1.x, c1.y, i, 0);
             result[i] = float16_t(lerp(lerp(latent00, latent10, uv.x), lerp(latent01, latent11, uv.x), uv.y));
         }
 

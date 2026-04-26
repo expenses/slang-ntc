@@ -73,20 +73,26 @@ class NetworkParameters(spy.InstanceList):
 
 
 class LatentTexture(spy.InstanceList):
-    def __init__(self, width: int, height: int):
+    def __init__(self, size: int):
         super().__init__(module["LatentTexture"])
-        self.width = width
-        self.height = height
+        self.size = size
+        
+        num_latents = size * size * 3
+        
+        while size > 4:
+            size >>= 1
+            num_latents += size * size * 3
+        print(num_latents)
 
         # Initialize to random latent texture
-        initial_latents = np.random.uniform(0.0, 1.0, height * width * 3).astype(
+        initial_latents = np.random.uniform(0.0, 1.0, num_latents).astype(
             "float16"
         )
         self.texture = spy.Tensor.from_numpy(device, initial_latents)
 
         # Gradients for the latent texture
         self.texture_grads = spy.Tensor.from_numpy(
-            device, np.zeros(height * width * 3).astype("float32")
+            device, np.zeros(num_latents).astype("float32")
         )
 
         # Temp data for Adam optimizer.
@@ -110,10 +116,10 @@ class Network(spy.InstanceList):
         hidden_layer_size = 56
         num_channels = shape[2]
         super().__init__(module[f"Network<{hidden_layer_size}, {num_channels}>"])
-        self.latent_texture_1 = LatentTexture(shape[0] // 4, shape[1] // 4)
-        self.latent_texture_2 = LatentTexture(shape[0] // 4, shape[1] // 4)
-        self.latent_texture_3 = LatentTexture(shape[0] // 8, shape[1] // 8)
-        self.latent_texture_4 = LatentTexture(shape[0] // 8, shape[1] // 8)
+        self.latent_texture_1 = LatentTexture(shape[0] // 4)
+        self.latent_texture_2 = LatentTexture(shape[0] // 4)
+        self.latent_texture_3 = LatentTexture(shape[0] // 8)
+        self.latent_texture_4 = LatentTexture(shape[0] // 8)
         self.layer0 = NetworkParameters(12, hidden_layer_size)
         self.layer1 = NetworkParameters(hidden_layer_size, hidden_layer_size)
         self.layer2 = NetworkParameters(hidden_layer_size, num_channels)
