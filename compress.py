@@ -107,7 +107,7 @@ class LatentTexture(spy.InstanceList):
 
 class Network(spy.InstanceList):
     def __init__(self, shape):
-        hidden_layer_size = 56
+        hidden_layer_size = 54
         num_channels = image.shape[2]
         super().__init__(module[f"Network<{hidden_layer_size}, {num_channels}>"])
         self.latent_texture_1 = LatentTexture(shape[0] // 4, shape[1] // 4)
