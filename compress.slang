@@ -65,59 +65,73 @@ struct NetworkParameters<int Inputs, int Outputs> {
 
 struct LatentTexture {
     Tensor<float16_t3, 1> texture;
+    AtomicTensor<float3, 1> texture_grads;
+
+    [BackwardDerivative(get_value_bwd)]
+    float3 get_value(int index) {
+        return float3(texture[index]);
+    }
+
+    void get_value_bwd(int index, float3 latent_grad) {
+        texture_grads.add(index, latent_grad);
+    }
+
     int size;
     int num_mip_levels;
 
-    AtomicTensor<float3, 1> texture_grads;
-
-    int get_index(int x, int y, int mip_level) {
-        return y * size + x;
+    int get_mip_size(int mip_level) {
+        return size >> mip_level;
     }
 
-    [BackwardDerivative(get_latent_bwd)]
-    float3 get_latent(int x, int y, int mip_level) {
-        return float3(texture[get_index(x,y,mip_level)]);
-    }
-
-    void get_latent_bwd(int x, int y, int mip_level, float3 latent_grad) {
-        texture_grads.add(get_index(x,y,mip_level), latent_grad);
+    int get_mip_offset(int mip_level) {
+        int offset = 0;
+        for (int l = 0; l < mip_level; ++l) {
+            int s = size >> l;
+            offset += s * s;
+        }
+        return offset;
     }
 
     [Differentiable]
     float16_t3 sample(no_diff float2 uv, no_diff float mip_level) {
-        // Convert to (fractional) texel position
-        uv *= float2(size - 1);
-        // Get (clamped) integer positions of texel corners
-        int2 c0 = clamp(int2(uv), int2(0), size - 1);
-        int2 c1 = min(c0 + 1, size - 1);
-
         int mip0 = int(clamp(mip_level, 0.0, float(num_mip_levels - 1)));
         int mip1 = min(mip0 + 1, num_mip_levels - 1);
         float mip_fractional = mip_level - mip0;
 
-        // Get fractional part of texel position for interpolation
-        uv = saturate(uv - float2(c0));
+        int mip0_size = get_mip_size(mip0);
+        int mip0_offset = get_mip_offset(mip0);
+        int mip1_size = get_mip_size(mip1);
+        int mip1_offset = get_mip_offset(mip1);
 
-        // Simple linear interpolation of latent texture
-        let latent00_m0 = get_latent(c0.x, c0.y, mip0);
-        let latent10_m0 = get_latent(c1.x, c0.y, mip0);
-        let latent01_m0 = get_latent(c0.x, c1.y, mip0);
-        let latent11_m0 = get_latent(c1.x, c1.y, mip0);
-        let latent00_m1 = get_latent(c0.x, c0.y, mip1);
-        let latent10_m1 = get_latent(c1.x, c0.y, mip1);
-        let latent01_m1 = get_latent(c0.x, c1.y, mip1);
-        let latent11_m1 = get_latent(c1.x, c1.y, mip1);
+        let mip0_uv = uv * float2(mip0_size) - 0.5;
+        let mip0_c0 = clamp(int2(mip0_uv), int2(0), mip0_size-1);
+        let mip0_c1 = min(mip0_c0 + 1, mip0_size - 1);
+        let mip0_fractional_uv = mip0_uv - mip0_c0;
+
+        let mip1_uv = uv * float2(mip1_size) - 0.5;
+        let mip1_c0 = clamp(int2(mip1_uv), int2(0), mip1_size-1);
+        let mip1_c1 = min(mip1_c0 + 1, mip1_size - 1);
+        let mip1_fractional_uv = mip1_uv - mip1_c0;
+
+        let v_00_m0 = get_value(mip0_offset + mip0_c0.x + mip0_c0.y * mip0_size);
+        let v_10_m0 = get_value(mip0_offset + mip0_c1.x + mip0_c0.y * mip0_size);
+        let v_01_m0 = get_value(mip0_offset + mip0_c0.x + mip0_c1.y * mip0_size);
+        let v_11_m0 = get_value(mip0_offset + mip0_c1.x + mip0_c1.y * mip0_size);
+        let v_00_m1 = get_value(mip1_offset + mip1_c0.x + mip1_c0.y * mip1_size);
+        let v_10_m1 = get_value(mip1_offset + mip1_c1.x + mip1_c0.y * mip1_size);
+        let v_01_m1 = get_value(mip1_offset + mip1_c0.x + mip1_c1.y * mip1_size);
+        let v_11_m1 = get_value(mip1_offset + mip1_c1.x + mip1_c1.y * mip1_size);
         return float16_t3(
             lerp(
                 lerp(
-                    lerp(latent00_m0, latent10_m0, uv.x),
-                    lerp(latent01_m0, latent11_m0, uv.x),
-                    uv.y
+                    lerp(v_00_m0, v_10_m0, mip0_fractional_uv.x),
+                    lerp(v_01_m0, v_11_m0, mip0_fractional_uv.x),
+                    mip0_fractional_uv.y
                 ),
                 lerp(
-                    lerp(latent00_m1, latent10_m1, uv.x),
-                    lerp(latent01_m1, latent11_m1, uv.x),
-                    uv.y
+                    lerp(v_00_m1, v_10_m1, mip1_fractional_uv.x),
+                    lerp(v_01_m1, v_11_m1, mip1_fractional_uv.x),
+                    mip1_fractional_uv.y
                 ),
                 mip_fractional
             )
