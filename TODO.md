@@ -1,0 +1,5 @@
+- Load multiple images and train together
+- Mipmaps
+- BC1 compression
+- Change hidden layer size to 64
+- Performance improvements
