@@ -1,4 +1,4 @@
-- Load multiple images and train together
+- Propely handle non-srgb images (normal maps etc)
 - Mipmaps
 - BC1 compression
 - Change hidden layer size to 64

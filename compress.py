@@ -11,12 +11,17 @@ device = spy.create_device(
     enable_debug_layers=True,
     include_paths=[Path(__file__).parent],
 )
+print(device.features)
 module = spy.Module.load_from_file(device, "compress.slang")
 
 # Load some materials.
 data_path = Path(__file__).parent
-image = spy.Tensor.load_from_image(device, sys.argv[1], linearize=True)
-image = spy.Tensor.from_numpy(device, np.transpose(image.to_numpy(), (1, 0, 2)))
+images = []
+for image_file in sys.argv[1:]:
+    tensor = spy.Tensor.load_from_image(device, image_file, linearize=True)
+    numpy = np.transpose(tensor.to_numpy(), (1,0,2))
+    images.append(numpy)
+image = spy.Tensor.from_numpy(device, np.concatenate(images, axis=2))
 
 print(image.shape)
 
@@ -165,8 +170,10 @@ print(end - start)
 
 output = spy.Tensor.empty_like(image)
 module.render(pixel=spy.call_id(), resolution=res, network=network, _result=output)
-spy.Bitmap(output.to_numpy()).convert(
-    component_type=spy.Bitmap.ComponentType.uint8, srgb_gamma=True
-).write("out.png")
+output = output.to_numpy()
+for i, filename in enumerate(sys.argv[1:]):
+    spy.Bitmap(output[:,:,i*3:(i+1)*3]).convert(
+        component_type=spy.Bitmap.ComponentType.uint8, srgb_gamma=True
+    ).write(f"{filename}_c.png")
 
 # np.save("out.net", network.latent_texture.texture.to_numpy())
