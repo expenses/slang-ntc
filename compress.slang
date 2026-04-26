@@ -64,27 +64,23 @@ struct NetworkParameters<int Inputs, int Outputs> {
 }
 
 struct LatentTexture {
-    Tensor<float16_t, 1> texture;
+    Tensor<float16_t3, 1> texture;
     int size;
     int num_mip_levels;
 
-    AtomicTensor<float, 1> texture_grads;
+    AtomicTensor<float3, 1> texture_grads;
 
-    int get_offset(int x, int y, int mip_level) {
-        return (y * size + x) * 3;
+    int get_index(int x, int y, int mip_level) {
+        return y * size + x;
     }
 
     [BackwardDerivative(get_latent_bwd)]
     float3 get_latent(int x, int y, int mip_level) {
-        let offset = get_offset(x,y,mip_level);
-        return float3(texture[offset], texture[offset+1], texture[offset+2]);
+        return float3(texture[get_index(x,y,mip_level)]);
     }
 
     void get_latent_bwd(int x, int y, int mip_level, float3 latent_grad) {
-        let offset = get_offset(x,y,mip_level);
-        texture_grads.add(offset, latent_grad[0]);
-        texture_grads.add(offset, latent_grad[1]);
-        texture_grads.add(offset, latent_grad[2]);
+        texture_grads.add(get_index(x,y,mip_level), latent_grad);
     }
 
     [Differentiable]
@@ -94,8 +90,8 @@ struct LatentTexture {
         // Get (clamped) integer positions of texel corners
         int2 c0 = clamp(int2(uv), int2(0), size - 1);
         int2 c1 = min(c0 + 1, size - 1);
-        
-        int mip0 = clamp(mip_level, 0, num_mip_levels - 1);
+
+        int mip0 = int(clamp(mip_level, 0.0, float(num_mip_levels - 1)));
         int mip1 = min(mip0 + 1, num_mip_levels - 1);
         float mip_fractional = mip_level - mip0;
 
