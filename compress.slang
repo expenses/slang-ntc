@@ -197,14 +197,14 @@ float16_t[NumChannels] render<int HiddenLayerSize, int NumChannels>(
     return network.eval(uv, mip);
 }
 
-float[NumChannels] loss<int HiddenLayerSize, int NumChannels>(
+float[NumChannels] calculate_loss<int HiddenLayerSize, int NumChannels>(
     int2 pixel,
     int resolution,
     Texture2D<float4>[] reference,
     SamplerState samp,
     Network<HiddenLayerSize, NumChannels> network
 ) {
-    return loss_uv(
+    return loss(
         (float2(pixel) + 0.5f) / float2(resolution),
         0.0f,
         reference,
@@ -214,7 +214,7 @@ float[NumChannels] loss<int HiddenLayerSize, int NumChannels>(
 }
 
 [Differentiable]
-float[NumChannels] loss_uv<int HiddenLayerSize, int NumChannels>(
+float[NumChannels] loss<int HiddenLayerSize, int NumChannels>(
     no_diff float2 uv,
     no_diff float mip_level,
     Texture2D<float4>[] reference,
@@ -310,5 +310,5 @@ void calculate_grads<int HiddenLayerSize, int NumChannels>(
     float[NumChannels] gradient_seed;
     for (int i = 0; i < NumChannels; ++i)
         gradient_seed[i] = 1.0f;
-    bwd_diff(loss_uv)(uv, mip, reference, samp, network, gradient_seed);
+    bwd_diff(loss)(uv, mip, reference, samp, network, gradient_seed);
 }

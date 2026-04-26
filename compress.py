@@ -178,7 +178,7 @@ for optimize_counter in range(args.steps):
     if optimize_counter % 100 == 0:
         print(f"{optimize_counter}")
     if optimize_counter % 1000 == 0 or optimize_counter == args.steps - 1:
-        module.loss(
+        module.calculate_loss(
             pixel=spy.call_id(),
             resolution=tex_size,
             network=network,
