@@ -63,11 +63,11 @@ class LatentTexture(spy.InstanceList):
         self.height = height
 
         # Initialize to random latent texture
-        initial_latents = np.random.uniform(0.0, 1.0, (height, width, 3)).astype("float16")
+        initial_latents = np.random.uniform(0.0, 1.0, height* width* 3).astype("float16")
         self.texture = spy.Tensor.from_numpy(device, initial_latents)
 
         # Gradients for the latent texture
-        self.texture_grads = spy.Tensor.from_numpy(device,np.zeros((height, width, 3)).astype("float32"))
+        self.texture_grads = spy.Tensor.from_numpy(device,np.zeros(height* width* 3).astype("float32"))
 
         # Temp data for Adam optimizer.
         self.m_texture = spy.Tensor.zeros_like(self.texture_grads)

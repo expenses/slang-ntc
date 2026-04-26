@@ -70,25 +70,29 @@ struct NetworkParameters<int Inputs, int Outputs>
 }
 
 struct LatentTexture {
-    Tensor<float16_t, 3> texture;
+    Tensor<float16_t, 1> texture;
+    uint width;
+    uint height;
 
-    AtomicTensor<float, 3> texture_grads;
+    AtomicTensor<float, 1> texture_grads;
 
     [BackwardDerivative(get_latent_bwd)]
     float get_latent(int x, int y, int latent_index)
     {
-        return float(texture[y, x, latent_index]);
+        let index = latent_index * (width*height) + y * width + x;
+        return float(texture[index]);
     }
 
     void get_latent_bwd(int x, int y, int latent_index, float latent_grad)
     {
-        texture_grads.add(y, x, latent_index, latent_grad);
+        let index = latent_index * (width*height) + y * width + x;
+        texture_grads.add(index, latent_grad);
     }
 
     [Differentiable]
     float16_t3 sample(no_diff float2 uv)
     {
-        int2 size = {texture.shape[1], texture.shape[0]};
+        int2 size = {width, height};
         // Convert to (fractional) texel position
         uv *= float2(size - 1);
         // Get (clamped) integer positions of texel corners
