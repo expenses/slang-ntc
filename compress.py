@@ -16,28 +16,8 @@ module = spy.Module.load_from_file(device, "compress.slang")
 
 # Load some materials.
 data_path = Path(__file__).parent
-images = []
-num_channels = 0
-for image_file in sys.argv[1:]:
-    arr = spy.Tensor.load_from_image(device, image_file, linearize=True).to_numpy()
-    num_channels += arr.shape[2]
-    images.append(arr)
-
-desc = spy.TextureDesc()
-desc.type = spy.TextureType.texture_2d_array
-desc.width = images[0].shape[0]
-desc.height = images[0].shape[1]
-desc.array_length = num_channels
-desc.format = spy.Format.r32_float
-desc.usage = spy.TextureUsage.shader_resource
-
-tex = device.create_texture(desc)
-
-layer = 0
-for image in images:
-    for channel in range(image.shape[2]):
-        tex.copy_from_numpy(np.ascontiguousarray(image[:, :, channel]), layer)
-        layer += 1
+tex = spy.TextureLoader(device).load_texture_array(sys.argv[1:])
+num_channels = tex.array_length * 3
 
 class NetworkParameters(spy.InstanceList):
     def __init__(self, inputs: int, outputs: int):
@@ -142,7 +122,7 @@ class Network(spy.InstanceList):
         self.layer2.optimize(learning_rate, optimize_counter)
 
 
-network = Network([tex.width,tex.height,tex.array_length])
+network = Network([tex.width,tex.height,num_channels])
 
 res = spy.int2(tex.width, tex.height)
 # Train a batch of samples at a time. Smaller batches train faster, but are more "jittery"
@@ -150,7 +130,7 @@ res = spy.int2(tex.width, tex.height)
 batch_size = (64, 64)
 learning_rate = 0.001
 
-loss_output = spy.Tensor.from_numpy(device, np.zeros((tex.height, tex.width, tex.array_length)).astype("float32"))
+loss_output = spy.Tensor.from_numpy(device, np.zeros((tex.height, tex.width, num_channels)).astype("float32"))
 
 steps = 10_000
 for optimize_counter in range(steps):
