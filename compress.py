@@ -16,7 +16,14 @@ module = spy.Module.load_from_file(device, "compress.slang")
 
 # Load some materials.
 data_path = Path(__file__).parent
-tex = spy.TextureLoader(device).load_textures(sys.argv[1:])
+tex = []
+loader = spy.TextureLoader(device)
+for filepath in sys.argv[1:]:
+    opts = spy.TextureLoader.Options()
+    opts.load_as_srgb=True
+    opts.generate_mips=True
+    tex.append(loader.load_texture(filepath, options=opts))
+print(tex)
 num_channels = len(tex) * 3
 
 class NetworkParameters(spy.InstanceList):
