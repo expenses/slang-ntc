@@ -6,7 +6,11 @@ from pathlib import Path
 import time
 import sys
 
-device = spy.create_device(spy.DeviceType.automatic, enable_debug_layers=True, include_paths=[Path(__file__).parent])
+device = spy.create_device(
+    spy.DeviceType.automatic,
+    enable_debug_layers=True,
+    include_paths=[Path(__file__).parent],
+)
 module = spy.Module.load_from_file(device, "compress.slang")
 
 # Load some materials.
@@ -15,6 +19,7 @@ image = spy.Tensor.load_from_image(device, sys.argv[1], linearize=True)
 image = spy.Tensor.from_numpy(device, np.transpose(image.to_numpy(), (1, 0, 2)))
 
 print(image.shape)
+
 
 class NetworkParameters(spy.InstanceList):
     def __init__(self, inputs: int, outputs: int):
@@ -29,8 +34,12 @@ class NetworkParameters(spy.InstanceList):
         )
 
         # Gradients for the biases and weights.
-        self.biases_grad = spy.Tensor.from_numpy(device, np.zeros(outputs).astype("float32"))
-        self.weights_grad = spy.Tensor.from_numpy(device, np.zeros((outputs, inputs)).astype("float32"))
+        self.biases_grad = spy.Tensor.from_numpy(
+            device, np.zeros(outputs).astype("float32")
+        )
+        self.weights_grad = spy.Tensor.from_numpy(
+            device, np.zeros((outputs, inputs)).astype("float32")
+        )
 
         # Temp data for Adam optimizer.
         self.m_biases = spy.Tensor.zeros_like(self.biases_grad)
@@ -65,11 +74,15 @@ class LatentTexture(spy.InstanceList):
         self.height = height
 
         # Initialize to random latent texture
-        initial_latents = np.random.uniform(0.0, 1.0, height* width* 3).astype("float16")
+        initial_latents = np.random.uniform(0.0, 1.0, height * width * 3).astype(
+            "float16"
+        )
         self.texture = spy.Tensor.from_numpy(device, initial_latents)
 
         # Gradients for the latent texture
-        self.texture_grads = spy.Tensor.from_numpy(device,np.zeros(height* width* 3).astype("float32"))
+        self.texture_grads = spy.Tensor.from_numpy(
+            device, np.zeros(height * width * 3).astype("float32")
+        )
 
         # Temp data for Adam optimizer.
         self.m_texture = spy.Tensor.zeros_like(self.texture_grads)
@@ -92,10 +105,10 @@ class Network(spy.InstanceList):
         hidden_layer_size = 56
         num_channels = image.shape[2]
         super().__init__(module[f"Network<{hidden_layer_size}, {num_channels}>"])
-        self.latent_texture_1 = LatentTexture(shape[0]//4, shape[1]//4)
-        self.latent_texture_2 = LatentTexture(shape[0]//4, shape[1]//4)
-        self.latent_texture_3 = LatentTexture(shape[0]//8, shape[1]//8)
-        self.latent_texture_4 = LatentTexture(shape[0]//8, shape[1]//8)
+        self.latent_texture_1 = LatentTexture(shape[0] // 4, shape[1] // 4)
+        self.latent_texture_2 = LatentTexture(shape[0] // 4, shape[1] // 4)
+        self.latent_texture_3 = LatentTexture(shape[0] // 8, shape[1] // 8)
+        self.latent_texture_4 = LatentTexture(shape[0] // 8, shape[1] // 8)
         self.layer0 = NetworkParameters(12, hidden_layer_size)
         self.layer1 = NetworkParameters(hidden_layer_size, hidden_layer_size)
         self.layer2 = NetworkParameters(hidden_layer_size, num_channels)
@@ -109,6 +122,7 @@ class Network(spy.InstanceList):
         self.layer0.optimize(learning_rate, optimize_counter)
         self.layer1.optimize(learning_rate, optimize_counter)
         self.layer2.optimize(learning_rate, optimize_counter)
+
 
 network = Network(image.shape)
 
@@ -128,25 +142,31 @@ for optimize_counter in range(steps):
         reference=image,
         network=network,
     )
-    network.optimize(learning_rate, optimize_counter+1)
+    network.optimize(learning_rate, optimize_counter + 1)
 
     if optimize_counter == 0:
         start = time.time()
 
     if optimize_counter % 100 == 0:
         print(f"{optimize_counter}")
-    if optimize_counter % 1000 == 0 or optimize_counter == steps-1:
+    if optimize_counter % 1000 == 0 or optimize_counter == steps - 1:
         module.loss(
-            pixel=spy.call_id(), resolution=res, network=network, reference=image, _result=loss_output
+            pixel=spy.call_id(),
+            resolution=res,
+            network=network,
+            reference=image,
+            _result=loss_output,
         )
         mae = np.mean(loss_output.to_numpy())
-        psnr = 20 * np.log10(1.0 / mae) if mae > 0 else float('inf')
+        psnr = 20 * np.log10(1.0 / mae) if mae > 0 else float("inf")
         print(f"Loss: {mae:.8f} PSNR: {psnr:.4f} dB")
 end = time.time()
 print(end - start)
 
 output = spy.Tensor.empty_like(image)
 module.render(pixel=spy.call_id(), resolution=res, network=network, _result=output)
-spy.Bitmap(output.to_numpy()).convert(component_type=spy.Bitmap.ComponentType.uint8, srgb_gamma=True).write("out.png")
+spy.Bitmap(output.to_numpy()).convert(
+    component_type=spy.Bitmap.ComponentType.uint8, srgb_gamma=True
+).write("out.png")
 
-#np.save("out.net", network.latent_texture.texture.to_numpy())
+# np.save("out.net", network.latent_texture.texture.to_numpy())
