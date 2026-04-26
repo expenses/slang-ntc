@@ -35,6 +35,7 @@ for filepath, is_srgb in filenames:
     opts.generate_mips = True
     tex.append(loader.load_texture(filepath, options=opts))
 print(tex)
+tex_size = tex[0].width
 num_channels = len(tex) * 3
 
 class NetworkParameters(spy.InstanceList):
@@ -147,14 +148,13 @@ class Network(spy.InstanceList):
 
 network = Network(args.size, num_channels)
 
-res = spy.int2(tex[0].width, tex[0].height)
 # Train a batch of samples at a time. Smaller batches train faster, but are more "jittery"
 # A better strategy is to use small batches at the start, and slowly increase them over time
 batch_size = (64, 64)
 learning_rate = 0.001
 
 loss_output = spy.Tensor.from_numpy(
-    device, np.zeros((tex[0].height, tex[0].width, num_channels)).astype("float32")
+    device, np.zeros((tex_size, tex_size, num_channels)).astype("float32")
 )
 
 samp = device.create_sampler(spy.SamplerDesc())
@@ -167,7 +167,6 @@ for optimize_counter in range(steps):
         batch_index=spy.grid(batch_size),
         batch_size=spy.int2(batch_size),
         reference=tex,
-        resolution=res,
         network=network,
         samp=samp,
     )
@@ -181,7 +180,7 @@ for optimize_counter in range(steps):
     if optimize_counter % 1000 == 0 or optimize_counter == steps - 1:
         module.loss(
             pixel=spy.call_id(),
-            resolution=res,
+            resolution=tex_size,
             network=network,
             reference=tex,
             _result=loss_output,
@@ -196,13 +195,13 @@ print(end - start)
 for mip in range(tex[0].mip_count):
     output = spy.Tensor.from_numpy(
         device,
-        np.zeros((tex[0].height >> mip, tex[0].width >> mip, num_channels)).astype(
+        np.zeros((tex_size >> mip, tex_size >> mip, num_channels)).astype(
             "float16"
         ),
     )
     module.render(
         pixel=spy.call_id(),
-        resolution=spy.int2(tex[0].width >> mip, tex[0].height >> mip),
+        resolution=tex_size >> mip,
         network=network,
         mip=mip,
         _result=output,

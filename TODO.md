@@ -1,5 +1,3 @@
-- Propely handle non-srgb images (normal maps etc)
-- Mipmaps
 - BC1 compression
 - Change hidden layer size to 64
 - Performance improvements

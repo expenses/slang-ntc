@@ -188,7 +188,7 @@ float16_t relu(float16_t x) {
 // "Render" the neural texture
 float16_t[NumChannels] render<int HiddenLayerSize, int NumChannels>(
     int2 pixel,
-    int2 resolution,
+    int resolution,
     int mip,
     Network<HiddenLayerSize, NumChannels> network
 ) {
@@ -198,7 +198,7 @@ float16_t[NumChannels] render<int HiddenLayerSize, int NumChannels>(
 
 float[NumChannels] loss<int HiddenLayerSize, int NumChannels>(
     int2 pixel,
-    int2 resolution,
+    int resolution,
     Texture2D<float4>[] reference,
     SamplerState samp,
     Network<HiddenLayerSize, NumChannels> network
@@ -288,7 +288,6 @@ void calculate_grads<int HiddenLayerSize, int NumChannels>(
     uint seed,
     int2 batch_index,
     int2 batch_size,
-    int2 resolution,
     Texture2D<float4>[] reference,
     SamplerState samp,
     Network<HiddenLayerSize, NumChannels> network
@@ -297,9 +296,6 @@ void calculate_grads<int HiddenLayerSize, int NumChannels>(
     // First, sample a random UV within our cell of the training batch grid
     LCG lcg = LCG(seed);
     float2 uv = (batch_index + float2(lcg.next_float(), lcg.next_float())) / float2(batch_size);
-    float[NumChannels] gradient_seed;
-    for (int i = 0; i < NumChannels; ++i)
-        gradient_seed[i] = 1.0f;
     let num_mip_levels = network.latent_texture_1.num_mip_levels;
     float mip;
     if (lcg.next_float() < 0.1f) {
@@ -308,7 +304,10 @@ void calculate_grads<int HiddenLayerSize, int NumChannels>(
         float u = max(lcg.next_float(), 1e-6f);
         mip = clamp(-log(u) / log(4.0f), 0.0f, float(num_mip_levels - 1));
     }
-    
+
     // Backpropagate through the loss
+    float[NumChannels] gradient_seed;
+    for (int i = 0; i < NumChannels; ++i)
+        gradient_seed[i] = 1.0f;
     bwd_diff(loss_uv)(uv, mip, reference, samp, network, gradient_seed);
 }
