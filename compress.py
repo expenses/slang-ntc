@@ -107,7 +107,7 @@ class LatentTexture(spy.InstanceList):
 
 class Network(spy.InstanceList):
     def __init__(self, shape):
-        hidden_layer_size = 54
+        hidden_layer_size = 56
         num_channels = shape[2]
         super().__init__(module[f"Network<{hidden_layer_size}, {num_channels}>"])
         self.latent_texture_1 = LatentTexture(shape[0] // 4, shape[1] // 4)
@@ -175,7 +175,7 @@ for optimize_counter in range(steps):
 end = time.time()
 print(end - start)
 
-output = spy.Tensor.empty_like(loss_output)
+output = spy.Tensor.from_numpy(device, np.zeros((tex[0].height, tex[0].width, num_channels)).astype("float16"))
 module.render(pixel=spy.call_id(), resolution=res, network=network, _result=output)
 output = output.to_numpy()
 for i, filename in enumerate(sys.argv[1:]):
