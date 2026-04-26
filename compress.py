@@ -17,14 +17,27 @@ module = spy.Module.load_from_file(device, "compress.slang")
 # Load some materials.
 data_path = Path(__file__).parent
 images = []
+num_channels = 0
 for image_file in sys.argv[1:]:
-    tensor = spy.Tensor.load_from_image(device, image_file, linearize=True)
-    numpy = np.transpose(tensor.to_numpy(), (1,0,2))
-    images.append(numpy)
-image = spy.Tensor.from_numpy(device, np.concatenate(images, axis=2))
+    arr = spy.Tensor.load_from_image(device, image_file, linearize=True).to_numpy()
+    num_channels += arr.shape[2]
+    images.append(arr)
 
-print(image.shape)
+desc = spy.TextureDesc()
+desc.type = spy.TextureType.texture_2d_array
+desc.width = images[0].shape[0]
+desc.height = images[0].shape[1]
+desc.array_length = num_channels
+desc.format = spy.Format.r32_float
+desc.usage = spy.TextureUsage.shader_resource
 
+tex = device.create_texture(desc)
+
+layer = 0
+for image in images:
+    for channel in range(image.shape[2]):
+        tex.copy_from_numpy(np.ascontiguousarray(image[:, :, channel]), layer)
+        layer += 1
 
 class NetworkParameters(spy.InstanceList):
     def __init__(self, inputs: int, outputs: int):
@@ -108,7 +121,7 @@ class LatentTexture(spy.InstanceList):
 class Network(spy.InstanceList):
     def __init__(self, shape):
         hidden_layer_size = 54
-        num_channels = image.shape[2]
+        num_channels = shape[2]
         super().__init__(module[f"Network<{hidden_layer_size}, {num_channels}>"])
         self.latent_texture_1 = LatentTexture(shape[0] // 4, shape[1] // 4)
         self.latent_texture_2 = LatentTexture(shape[0] // 4, shape[1] // 4)
@@ -129,14 +142,15 @@ class Network(spy.InstanceList):
         self.layer2.optimize(learning_rate, optimize_counter)
 
 
-network = Network(image.shape)
+network = Network([tex.width,tex.height,tex.array_length])
 
-res = spy.int2(image.shape[0], image.shape[1])
+res = spy.int2(tex.width, tex.height)
 # Train a batch of samples at a time. Smaller batches train faster, but are more "jittery"
 # A better strategy is to use small batches at the start, and slowly increase them over time
 batch_size = (64, 64)
 learning_rate = 0.001
-loss_output = spy.Tensor.empty_like(image)
+
+loss_output = spy.Tensor.from_numpy(device, np.zeros((tex.height, tex.width, tex.array_length)).astype("float32"))
 
 steps = 10_000
 for optimize_counter in range(steps):
@@ -144,7 +158,8 @@ for optimize_counter in range(steps):
         seed=spy.wang_hash(seed=optimize_counter, warmup=2),
         batch_index=spy.grid(batch_size),
         batch_size=spy.int2(batch_size),
-        reference=image,
+        reference=tex,
+        resolution=res,
         network=network,
     )
     network.optimize(learning_rate, optimize_counter + 1)
@@ -159,7 +174,7 @@ for optimize_counter in range(steps):
             pixel=spy.call_id(),
             resolution=res,
             network=network,
-            reference=image,
+            reference=tex,
             _result=loss_output,
         )
         mae = np.mean(loss_output.to_numpy())
@@ -168,7 +183,7 @@ for optimize_counter in range(steps):
 end = time.time()
 print(end - start)
 
-output = spy.Tensor.empty_like(image)
+output = spy.Tensor.empty_like(loss_output)
 module.render(pixel=spy.call_id(), resolution=res, network=network, _result=output)
 output = output.to_numpy()
 for i, filename in enumerate(sys.argv[1:]):

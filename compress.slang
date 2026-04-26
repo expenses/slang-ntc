@@ -179,13 +179,13 @@ float[NumChannels] render<int HiddenLayerSize, int NumChannels>(int2 pixel, int2
 }
 
 [Differentiable]
-float[NumChannels] loss<int HiddenLayerSize, int NumChannels>(int2 pixel, int2 resolution, Tensor<float, 3> reference, Network<HiddenLayerSize, NumChannels> network)
+float[NumChannels] loss<int HiddenLayerSize, int NumChannels>(int2 pixel, int2 resolution, Texture2DArray<float> reference, Network<HiddenLayerSize, NumChannels> network)
 {
     let color = render(pixel, resolution, network);
     float[NumChannels] error;
     [ForceUnroll]
     for (int i = 0; i < NumChannels; ++i)
-        error[i] = abs(color[i] - reference.load(pixel.x, pixel.y, i));
+        error[i] = abs(color[i] - reference[int3(pixel.x, pixel.y, i)]);
     return error;
 }
 
@@ -238,14 +238,13 @@ void optimizer_step(inout float16_t primal, inout float grad, inout float mean, 
     grad = 0.0f;
 }
 
-void calculate_grads<int HiddenLayerSize, int NumChannels>(uint seed, int2 batch_index, int2 batch_size, Tensor<float, 3> reference, Network<HiddenLayerSize, NumChannels> network)
+void calculate_grads<int HiddenLayerSize, int NumChannels>(uint seed, int2 batch_index, int2 batch_size, int2 resolution, Texture2DArray<float> reference, Network<HiddenLayerSize, NumChannels> network)
 {
     // Pick a random pixel for computing the loss
     // First, sample a random UV within our cell of the training batch grid
     LCG lcg = LCG(seed);
     float2 uv = (batch_index + float2(lcg.next_float(), lcg.next_float())) / float2(batch_size);
     // Then turn that into a pixel on the texture
-    int2 resolution = {reference.shape[1], reference.shape[0]};
     int2 pixel = int2(uv * float2(resolution));
     float[NumChannels] gradient_seed;
     for (int i = 0; i < NumChannels; ++i)
