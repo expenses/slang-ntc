@@ -79,7 +79,9 @@ class LatentTexture(spy.InstanceList):
         
         num_latents = size * size * 3
         
+        self.num_mip_levels = 1
         while size > 4:
+            self.num_mip_levels += 1
             size >>= 1
             num_latents += size * size * 3
         print(num_latents)

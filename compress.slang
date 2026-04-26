@@ -66,20 +66,25 @@ struct NetworkParameters<int Inputs, int Outputs> {
 struct LatentTexture {
     Tensor<float16_t, 1> texture;
     int size;
+    int num_mip_levels;
 
     AtomicTensor<float, 1> texture_grads;
 
-    int get_index(int x, int y, int channel, int mip_level) {
-        return channel * (size*size) + y * size + x;
+    int get_offset(int x, int y, int mip_level) {
+        return (y * size + x) * 3;
     }
 
     [BackwardDerivative(get_latent_bwd)]
-    float get_latent(int x, int y, int channel, int mip_level) {
-        return float(texture[get_index(x, y, channel, mip_level)]);
+    float3 get_latent(int x, int y, int mip_level) {
+        let offset = get_offset(x,y,mip_level);
+        return float3(texture[offset], texture[offset+1], texture[offset+2]);
     }
 
-    void get_latent_bwd(int x, int y, int channel, int mip_level, float latent_grad) {
-        texture_grads.add(get_index(x, y, channel, mip_level), latent_grad);
+    void get_latent_bwd(int x, int y, int mip_level, float3 latent_grad) {
+        let offset = get_offset(x,y,mip_level);
+        texture_grads.add(offset, latent_grad[0]);
+        texture_grads.add(offset, latent_grad[1]);
+        texture_grads.add(offset, latent_grad[2]);
     }
 
     [Differentiable]
@@ -89,22 +94,38 @@ struct LatentTexture {
         // Get (clamped) integer positions of texel corners
         int2 c0 = clamp(int2(uv), int2(0), size - 1);
         int2 c1 = min(c0 + 1, size - 1);
+        
+        int mip0 = clamp(mip_level, 0, num_mip_levels - 1);
+        int mip1 = min(mip0 + 1, num_mip_levels - 1);
+        float mip_fractional = mip_level - mip0;
 
         // Get fractional part of texel position for interpolation
         uv = saturate(uv - float2(c0));
 
-        float16_t3 result;
-        [ForceUnroll]
-        for (int i = 0; i < 3; ++i) {
-            // Simple linear interpolation of latent texture
-            float latent00 = get_latent(c0.x, c0.y, i, 0);
-            float latent10 = get_latent(c1.x, c0.y, i, 0);
-            float latent01 = get_latent(c0.x, c1.y, i, 0);
-            float latent11 = get_latent(c1.x, c1.y, i, 0);
-            result[i] = float16_t(lerp(lerp(latent00, latent10, uv.x), lerp(latent01, latent11, uv.x), uv.y));
-        }
-
-        return result;
+        // Simple linear interpolation of latent texture
+        let latent00_m0 = get_latent(c0.x, c0.y, mip0);
+        let latent10_m0 = get_latent(c1.x, c0.y, mip0);
+        let latent01_m0 = get_latent(c0.x, c1.y, mip0);
+        let latent11_m0 = get_latent(c1.x, c1.y, mip0);
+        let latent00_m1 = get_latent(c0.x, c0.y, mip1);
+        let latent10_m1 = get_latent(c1.x, c0.y, mip1);
+        let latent01_m1 = get_latent(c0.x, c1.y, mip1);
+        let latent11_m1 = get_latent(c1.x, c1.y, mip1);
+        return float16_t3(
+            lerp(
+                lerp(
+                    lerp(latent00_m0, latent10_m0, uv.x),
+                    lerp(latent01_m0, latent11_m0, uv.x),
+                    uv.y
+                ),
+                lerp(
+                    lerp(latent00_m1, latent10_m1, uv.x),
+                    lerp(latent01_m1, latent11_m1, uv.x),
+                    uv.y
+                ),
+                mip_fractional
+            )
+        );
     }
 }
 
