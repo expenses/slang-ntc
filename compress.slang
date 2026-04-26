@@ -171,14 +171,12 @@ float16_t relu(float16_t x)
 }
 
 // "Render" the neural texture
-[Differentiable]
 float[NumChannels] render<int HiddenLayerSize, int NumChannels>(int2 pixel, int2 resolution, Network<HiddenLayerSize, NumChannels> network)
 {
     float2 uv = (float2(pixel) + 0.5f) / float2(resolution);
     return network.eval(uv);
 }
 
-[Differentiable]
 float[NumChannels] loss<int HiddenLayerSize, int NumChannels>(
     int2 pixel,
     int2 resolution,
@@ -188,6 +186,7 @@ float[NumChannels] loss<int HiddenLayerSize, int NumChannels>(
 ) {
     return loss_uv(
         (float2(pixel) + 0.5f) / float2(resolution),
+        0.0f,
         reference,
         samp,
         network
@@ -197,6 +196,7 @@ float[NumChannels] loss<int HiddenLayerSize, int NumChannels>(
 [Differentiable]
 float[NumChannels] loss_uv<int HiddenLayerSize, int NumChannels>(
     no_diff float2 uv,
+    no_diff float mip_level,
     Texture2D<float4>[] reference,
     SamplerState samp,
     Network<HiddenLayerSize, NumChannels> network
@@ -205,7 +205,7 @@ float[NumChannels] loss_uv<int HiddenLayerSize, int NumChannels>(
     float[NumChannels] error;
     [ForceUnroll]
     for (int i = 0; i < NumChannels/3; ++i) {
-        float3 sample = (no_diff reference[i].SampleLevel(samp, uv, 0)).rgb;
+        float3 sample = (no_diff reference[i].SampleLevel(samp, uv, mip_level)).rgb;
         error[i*3] = abs(sample[0] - color[i*3]);
         error[i*3+1] = abs(sample[1] - color[i*3+1]);
         error[i*3+2] = abs(sample[2] - color[i*3+2]);
@@ -272,5 +272,5 @@ void calculate_grads<int HiddenLayerSize, int NumChannels>(uint seed, int2 batch
     for (int i = 0; i < NumChannels; ++i)
         gradient_seed[i] = 1.0f;
     // Backpropagate through the loss
-    bwd_diff(loss_uv)(uv, reference, samp, network, gradient_seed);
+    bwd_diff(loss_uv)(uv, 0.0f, reference, samp, network, gradient_seed);
 }
