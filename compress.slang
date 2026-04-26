@@ -94,7 +94,8 @@ struct LatentTexture {
 
     [Differentiable]
     float16_t3 sample(no_diff float2 uv, no_diff float mip_level) {
-        int mip0 = int(clamp(mip_level, 0.0, float(num_mip_levels - 1)));
+        mip_level = clamp(mip_level, 0.0, float(num_mip_levels - 1));
+        int mip0 = int(mip_level);
         int mip1 = min(mip0 + 1, num_mip_levels - 1);
         float mip_fractional = mip_level - mip0;
 
@@ -152,8 +153,8 @@ struct Network<int HiddenLayerSize, int NumChannels> {
     float16_t[NumChannels] eval(no_diff float2 uv, no_diff float mip_level) {
         let s_1 = latent_texture_1.sample(uv, mip_level);
         let s_2 = latent_texture_2.sample(uv+0.5, mip_level);
-        let s_3 = latent_texture_3.sample(uv, saturate(mip_level-1));
-        let s_4 = latent_texture_4.sample(uv+0.5, saturate(mip_level-1));
+        let s_3 = latent_texture_3.sample(uv, mip_level-1);
+        let s_4 = latent_texture_4.sample(uv+0.5, mip_level-1);
         float16_t half_inputs[12] = {
             s_1[0],
             s_1[1],
