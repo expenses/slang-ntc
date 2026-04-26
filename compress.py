@@ -11,6 +11,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--srgb", dest="srgb", default=[], nargs="+", action="append")
 parser.add_argument("--nonsrgb", dest="nonsrgb", default=[], nargs="+", action="append")
 parser.add_argument("--size", dest="size", type=int, default=1024)
+parser.add_argument("--steps", dest="steps", type=int, default=10_000)
 args = parser.parse_args()
 
 filenames = [(filename, True) for filenames in args.srgb for filename in filenames] + [
@@ -160,8 +161,7 @@ loss_output = spy.Tensor.from_numpy(
 samp = device.create_sampler(spy.SamplerDesc())
 print(samp)
 
-steps = 10_000
-for optimize_counter in range(steps):
+for optimize_counter in range(args.steps):
     module.calculate_grads(
         seed=spy.wang_hash(seed=optimize_counter, warmup=2),
         batch_index=spy.grid(batch_size),
@@ -177,7 +177,7 @@ for optimize_counter in range(steps):
 
     if optimize_counter % 100 == 0:
         print(f"{optimize_counter}")
-    if optimize_counter % 1000 == 0 or optimize_counter == steps - 1:
+    if optimize_counter % 1000 == 0 or optimize_counter == args.steps - 1:
         module.loss(
             pixel=spy.call_id(),
             resolution=tex_size,
