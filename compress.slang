@@ -184,7 +184,7 @@ float[NumChannels] loss<int HiddenLayerSize, int NumChannels>(int2 pixel, int2 r
     let color = render(pixel, resolution, network);
     float[NumChannels] error;
     [ForceUnroll]
-    for (int i = 0; i < NumChannels; i++)
+    for (int i = 0; i < NumChannels; ++i)
         error[i] = abs(color[i] - reference.load(pixel.x, pixel.y, i));
     return error;
 }
@@ -248,7 +248,6 @@ void calculate_grads<int HiddenLayerSize, int NumChannels>(uint seed, int2 batch
     int2 resolution = {reference.shape[1], reference.shape[0]};
     int2 pixel = int2(uv * float2(resolution));
     float[NumChannels] gradient_seed;
-    [ForceUnroll]
     for (int i = 0; i < NumChannels; ++i)
         gradient_seed[i] = 1.0f;
     // Backpropagate through the loss
