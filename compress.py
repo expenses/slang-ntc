@@ -5,6 +5,17 @@ import numpy as np
 from pathlib import Path
 import time
 import sys
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--srgb", dest="srgb", default=[], nargs="+", action="append")
+parser.add_argument("--nonsrgb", dest="nonsrgb", default=[], nargs="+", action="append")
+parser.add_argument("--size", dest="size", type=int, default=1024)
+args = parser.parse_args()
+
+filenames = [(filename, True) for filenames in args.srgb for filename in filenames] + [
+    (filename, False) for filenames in args.nonsrgb for filename in filenames
+]
 
 device = spy.create_device(
     spy.DeviceType.automatic,
@@ -18,10 +29,10 @@ module = spy.Module.load_from_file(device, "compress.slang")
 data_path = Path(__file__).parent
 tex = []
 loader = spy.TextureLoader(device)
-for filepath in sys.argv[1:]:
+for filepath, is_srgb in filenames:
     opts = spy.TextureLoader.Options()
-    opts.load_as_srgb=True
-    opts.generate_mips=True
+    opts.load_as_srgb = is_srgb
+    opts.generate_mips = True
     tex.append(loader.load_texture(filepath, options=opts))
 print(tex)
 num_channels = len(tex) * 3
@@ -76,9 +87,9 @@ class LatentTexture(spy.InstanceList):
     def __init__(self, size: int):
         super().__init__(module["LatentTexture"])
         self.size = size
-        
+
         num_latents = size * size * 3
-        
+
         self.num_mip_levels = 1
         while size > 4:
             self.num_mip_levels += 1
@@ -87,9 +98,7 @@ class LatentTexture(spy.InstanceList):
         print(num_latents)
 
         # Initialize to random latent texture
-        initial_latents = np.random.uniform(0.0, 1.0, num_latents).astype(
-            "float16"
-        )
+        initial_latents = np.random.uniform(0.0, 1.0, num_latents).astype("float16")
         self.texture = spy.Tensor.from_numpy(device, initial_latents)
 
         # Gradients for the latent texture
@@ -114,14 +123,13 @@ class LatentTexture(spy.InstanceList):
 
 
 class Network(spy.InstanceList):
-    def __init__(self, shape):
-        hidden_layer_size = 56
-        num_channels = shape[2]
+    def __init__(self, size, num_channels):
+        hidden_layer_size = 53
         super().__init__(module[f"Network<{hidden_layer_size}, {num_channels}>"])
-        self.latent_texture_1 = LatentTexture(shape[0] // 4)
-        self.latent_texture_2 = LatentTexture(shape[0] // 4)
-        self.latent_texture_3 = LatentTexture(shape[0] // 8)
-        self.latent_texture_4 = LatentTexture(shape[0] // 8)
+        self.latent_texture_1 = LatentTexture(size)
+        self.latent_texture_2 = LatentTexture(size)
+        self.latent_texture_3 = LatentTexture(size // 2)
+        self.latent_texture_4 = LatentTexture(size // 2)
         self.layer0 = NetworkParameters(12, hidden_layer_size)
         self.layer1 = NetworkParameters(hidden_layer_size, hidden_layer_size)
         self.layer2 = NetworkParameters(hidden_layer_size, num_channels)
@@ -137,7 +145,7 @@ class Network(spy.InstanceList):
         self.layer2.optimize(learning_rate, optimize_counter)
 
 
-network = Network([tex[0].width,tex[0].height,num_channels])
+network = Network(args.size, num_channels)
 
 res = spy.int2(tex[0].width, tex[0].height)
 # Train a batch of samples at a time. Smaller batches train faster, but are more "jittery"
@@ -145,7 +153,9 @@ res = spy.int2(tex[0].width, tex[0].height)
 batch_size = (64, 64)
 learning_rate = 0.001
 
-loss_output = spy.Tensor.from_numpy(device, np.zeros((tex[0].height, tex[0].width, num_channels)).astype("float32"))
+loss_output = spy.Tensor.from_numpy(
+    device, np.zeros((tex[0].height, tex[0].width, num_channels)).astype("float32")
+)
 
 samp = device.create_sampler(spy.SamplerDesc())
 print(samp)
@@ -183,12 +193,23 @@ for optimize_counter in range(steps):
 end = time.time()
 print(end - start)
 
-output = spy.Tensor.from_numpy(device, np.zeros((tex[0].height, tex[0].width, num_channels)).astype("float16"))
-module.render(pixel=spy.call_id(), resolution=res, network=network, _result=output)
-output = output.to_numpy()
-for i, filename in enumerate(sys.argv[1:]):
-    spy.Bitmap(output[:,:,i*3:(i+1)*3]).convert(
-        component_type=spy.Bitmap.ComponentType.uint8, srgb_gamma=True
-    ).write(f"{filename}_c.png")
-
-# np.save("out.net", network.latent_texture.texture.to_numpy())
+for mip in range(tex[0].mip_count):
+    output = spy.Tensor.from_numpy(
+        device,
+        np.zeros((tex[0].height >> mip, tex[0].width >> mip, num_channels)).astype(
+            "float16"
+        ),
+    )
+    module.render(
+        pixel=spy.call_id(),
+        resolution=spy.int2(tex[0].width >> mip, tex[0].height >> mip),
+        network=network,
+        mip=mip,
+        _result=output,
+    )
+    output = output.to_numpy()
+    outputs = [output[:, :, i * 3 : (i + 1) * 3] for i in range(len(tex))]
+    for i, (_, is_srgb) in enumerate(filenames):
+        spy.Bitmap(outputs[i]).convert(
+            component_type=spy.Bitmap.ComponentType.uint8, srgb_gamma=is_srgb
+        ).write(f"{i}_m{mip}.png")

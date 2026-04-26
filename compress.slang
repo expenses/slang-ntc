@@ -152,8 +152,8 @@ struct Network<int HiddenLayerSize, int NumChannels> {
     float16_t[NumChannels] eval(no_diff float2 uv, no_diff float mip_level) {
         let s_1 = latent_texture_1.sample(uv, mip_level);
         let s_2 = latent_texture_2.sample(uv+0.5, mip_level);
-        let s_3 = latent_texture_3.sample(uv, mip_level);
-        let s_4 = latent_texture_4.sample(uv+0.5, mip_level);
+        let s_3 = latent_texture_3.sample(uv, saturate(mip_level-1));
+        let s_4 = latent_texture_4.sample(uv+0.5, saturate(mip_level-1));
         float16_t half_inputs[12] = {
             s_1[0],
             s_1[1],
@@ -189,10 +189,11 @@ float16_t relu(float16_t x) {
 float16_t[NumChannels] render<int HiddenLayerSize, int NumChannels>(
     int2 pixel,
     int2 resolution,
+    int mip,
     Network<HiddenLayerSize, NumChannels> network
 ) {
     float2 uv = (float2(pixel) + 0.5f) / float2(resolution);
-    return network.eval(uv, 0.0f);
+    return network.eval(uv, mip);
 }
 
 float[NumChannels] loss<int HiddenLayerSize, int NumChannels>(
@@ -299,6 +300,15 @@ void calculate_grads<int HiddenLayerSize, int NumChannels>(
     float[NumChannels] gradient_seed;
     for (int i = 0; i < NumChannels; ++i)
         gradient_seed[i] = 1.0f;
+    let num_mip_levels = network.latent_texture_1.num_mip_levels;
+    float mip;
+    if (lcg.next_float() < 0.1f) {
+        mip = lcg.next_float() * num_mip_levels; // uniform
+    } else {
+        float u = max(lcg.next_float(), 1e-6f);
+        mip = clamp(-log(u) / log(4.0f), 0.0f, float(num_mip_levels - 1));
+    }
+    
     // Backpropagate through the loss
-    bwd_diff(loss_uv)(uv, 0.0f, reference, samp, network, gradient_seed);
+    bwd_diff(loss_uv)(uv, mip, reference, samp, network, gradient_seed);
 }
