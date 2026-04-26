@@ -139,6 +139,9 @@ learning_rate = 0.001
 
 loss_output = spy.Tensor.from_numpy(device, np.zeros((tex[0].height, tex[0].width, num_channels)).astype("float32"))
 
+samp = device.create_sampler(spy.SamplerDesc())
+print(samp)
+
 steps = 10_000
 for optimize_counter in range(steps):
     module.calculate_grads(
@@ -148,6 +151,7 @@ for optimize_counter in range(steps):
         reference=tex,
         resolution=res,
         network=network,
+        samp=samp,
     )
     network.optimize(learning_rate, optimize_counter + 1)
 
@@ -163,6 +167,7 @@ for optimize_counter in range(steps):
             network=network,
             reference=tex,
             _result=loss_output,
+            samp=samp,
         )
         mae = np.mean(loss_output.to_numpy())
         psnr = 20 * np.log10(1.0 / mae) if mae > 0 else float("inf")

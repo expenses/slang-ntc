@@ -179,13 +179,33 @@ float[NumChannels] render<int HiddenLayerSize, int NumChannels>(int2 pixel, int2
 }
 
 [Differentiable]
-float[NumChannels] loss<int HiddenLayerSize, int NumChannels>(int2 pixel, int2 resolution, Texture2D<float4>[] reference, Network<HiddenLayerSize, NumChannels> network)
-{
-    let color = render(pixel, resolution, network);
+float[NumChannels] loss<int HiddenLayerSize, int NumChannels>(
+    int2 pixel,
+    int2 resolution,
+    Texture2D<float4>[] reference,
+    SamplerState samp,
+    Network<HiddenLayerSize, NumChannels> network
+) {
+    return loss_uv(
+        (float2(pixel) + 0.5f) / float2(resolution),
+        reference,
+        samp,
+        network
+    );
+}
+
+[Differentiable]
+float[NumChannels] loss_uv<int HiddenLayerSize, int NumChannels>(
+    no_diff float2 uv,
+    Texture2D<float4>[] reference,
+    SamplerState samp,
+    Network<HiddenLayerSize, NumChannels> network
+) {
+    let color = network.eval(uv);
     float[NumChannels] error;
     [ForceUnroll]
     for (int i = 0; i < NumChannels/3; ++i) {
-        float3 sample = reference[i][int2(pixel.x, pixel.y)].rgb;
+        float3 sample = (no_diff reference[i].SampleLevel(samp, uv, 0)).rgb;
         error[i*3] = abs(sample[0] - color[i*3]);
         error[i*3+1] = abs(sample[1] - color[i*3+1]);
         error[i*3+2] = abs(sample[2] - color[i*3+2]);
@@ -242,17 +262,15 @@ void optimizer_step(inout float16_t primal, inout float grad, inout float mean, 
     grad = 0.0f;
 }
 
-void calculate_grads<int HiddenLayerSize, int NumChannels>(uint seed, int2 batch_index, int2 batch_size, int2 resolution, Texture2D<float4>[] reference, Network<HiddenLayerSize, NumChannels> network)
+void calculate_grads<int HiddenLayerSize, int NumChannels>(uint seed, int2 batch_index, int2 batch_size, int2 resolution, Texture2D<float4>[] reference, SamplerState samp, Network<HiddenLayerSize, NumChannels> network)
 {
     // Pick a random pixel for computing the loss
     // First, sample a random UV within our cell of the training batch grid
     LCG lcg = LCG(seed);
     float2 uv = (batch_index + float2(lcg.next_float(), lcg.next_float())) / float2(batch_size);
-    // Then turn that into a pixel on the texture
-    int2 pixel = int2(uv * float2(resolution));
     float[NumChannels] gradient_seed;
     for (int i = 0; i < NumChannels; ++i)
         gradient_seed[i] = 1.0f;
     // Backpropagate through the loss
-    bwd_diff(loss)(pixel, resolution, reference, network, gradient_seed);
+    bwd_diff(loss_uv)(uv, reference, samp, network, gradient_seed);
 }
