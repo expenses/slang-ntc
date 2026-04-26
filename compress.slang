@@ -117,17 +117,17 @@ struct LatentTexture {
     }
 }
 
-struct Network<int HiddenLayerSize> {
+struct Network<int HiddenLayerSize, int NumChannels> {
     LatentTexture latent_texture_1;
     LatentTexture latent_texture_2;
     LatentTexture latent_texture_3;
     LatentTexture latent_texture_4;
     NetworkParameters<12, HiddenLayerSize>  layer0;
     NetworkParameters<HiddenLayerSize, HiddenLayerSize> layer1;
-    NetworkParameters<HiddenLayerSize, 3>  layer2;
+    NetworkParameters<HiddenLayerSize, NumChannels>  layer2;
 
     [Differentiable]
-    float3 eval(no_diff float2 uv)
+    float[NumChannels] eval(no_diff float2 uv)
     {
         let s_1 = latent_texture_1.sample(uv);
         let s_2 = latent_texture_2.sample(uv+0.5);
@@ -155,8 +155,12 @@ struct Network<int HiddenLayerSize> {
         [ForceUnroll]
         for (int i = 0; i < HiddenLayerSize; ++i)
             output1[i] = relu(output1[i]);
-        float16_t output2[3] = layer2.forward(output1);
-        return float3(output2[0], output2[1], output2[2]);
+        float16_t output2[NumChannels] = layer2.forward(output1);
+        float full_outputs[NumChannels];
+        [ForceUnroll]
+        for (int i = 0; i < NumChannels; ++i)
+            full_outputs[i] = float(output2[i]);
+        return full_outputs;
     }
 }
 
@@ -168,18 +172,21 @@ float16_t relu(float16_t x)
 
 // "Render" the neural texture
 [Differentiable]
-float3 render<int HiddenLayerSize>(int2 pixel, int2 resolution, Network<HiddenLayerSize> network)
+float[NumChannels] render<int HiddenLayerSize, int NumChannels>(int2 pixel, int2 resolution, Network<HiddenLayerSize, NumChannels> network)
 {
     float2 uv = (float2(pixel) + 0.5f) / float2(resolution);
     return network.eval(uv);
 }
 
 [Differentiable]
-float3 loss<int HiddenLayerSize>(int2 pixel, int2 resolution, no_diff float3 reference, Network<HiddenLayerSize> network)
+float[NumChannels] loss<int HiddenLayerSize, int NumChannels>(int2 pixel, int2 resolution, Tensor<float, 3> reference, Network<HiddenLayerSize, NumChannels> network)
 {
-    float3 color = render(pixel, resolution, network);
-    float3 error = color - reference;
-    return abs(error);
+    let color = render(pixel, resolution, network);
+    float[NumChannels] error;
+    [ForceUnroll]
+    for (int i = 0; i < NumChannels; i++)
+        error[i] = abs(color[i] - reference.load(pixel.x, pixel.y, i));
+    return error;
 }
 
 struct LCG
@@ -231,7 +238,7 @@ void optimizer_step(inout float16_t primal, inout float grad, inout float mean, 
     grad = 0.0f;
 }
 
-void calculate_grads<int HiddenLayerSize>(uint seed, int2 batch_index, int2 batch_size, Tensor<float3, 2> reference, Network<HiddenLayerSize> network)
+void calculate_grads<int HiddenLayerSize, int NumChannels>(uint seed, int2 batch_index, int2 batch_size, Tensor<float, 3> reference, Network<HiddenLayerSize, NumChannels> network)
 {
     // Pick a random pixel for computing the loss
     // First, sample a random UV within our cell of the training batch grid
@@ -240,8 +247,10 @@ void calculate_grads<int HiddenLayerSize>(uint seed, int2 batch_index, int2 batc
     // Then turn that into a pixel on the texture
     int2 resolution = {reference.shape[1], reference.shape[0]};
     int2 pixel = int2(uv * float2(resolution));
-    // Evaluate the reference texture color there
-    float3 reference_color = reference.load(pixel);
+    float[NumChannels] gradient_seed;
+    [ForceUnroll]
+    for (int i = 0; i < NumChannels; ++i)
+        gradient_seed[i] = 1.0f;
     // Backpropagate through the loss
-    bwd_diff(loss)(pixel, resolution, reference_color, network, 1.0f);
+    bwd_diff(loss)(pixel, resolution, reference, network, gradient_seed);
 }

@@ -12,6 +12,8 @@ module = spy.Module.load_from_file(device, "compress.slang")
 # Load some materials.
 data_path = Path(__file__).parent
 image = spy.Tensor.load_from_image(device, sys.argv[1], linearize=True)
+image = spy.Tensor.from_numpy(device, np.transpose(image.to_numpy(), (1, 0, 2)))
+
 print(image.shape)
 
 class NetworkParameters(spy.InstanceList):
@@ -88,14 +90,15 @@ class LatentTexture(spy.InstanceList):
 class Network(spy.InstanceList):
     def __init__(self, shape):
         hidden_layer_size = 56
-        super().__init__(module[f"Network<{hidden_layer_size}>"])
+        num_channels = image.shape[2]
+        super().__init__(module[f"Network<{hidden_layer_size}, {num_channels}>"])
         self.latent_texture_1 = LatentTexture(shape[0]//4, shape[1]//4)
         self.latent_texture_2 = LatentTexture(shape[0]//4, shape[1]//4)
         self.latent_texture_3 = LatentTexture(shape[0]//8, shape[1]//8)
         self.latent_texture_4 = LatentTexture(shape[0]//8, shape[1]//8)
         self.layer0 = NetworkParameters(12, hidden_layer_size)
         self.layer1 = NetworkParameters(hidden_layer_size, hidden_layer_size)
-        self.layer2 = NetworkParameters(hidden_layer_size, 3)
+        self.layer2 = NetworkParameters(hidden_layer_size, num_channels)
 
     # Calls the Slang 'optimize' function for the layer.
     def optimize(self, learning_rate: float, optimize_counter: int):
@@ -109,7 +112,7 @@ class Network(spy.InstanceList):
 
 network = Network(image.shape)
 
-res = spy.int2(*image.shape)
+res = spy.int2(image.shape[0], image.shape[1])
 # Train a batch of samples at a time. Smaller batches train faster, but are more "jittery"
 # A better strategy is to use small batches at the start, and slowly increase them over time
 batch_size = (64, 64)
