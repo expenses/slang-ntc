@@ -34,18 +34,18 @@ struct NetworkParameters<int Inputs, int Outputs> {
     }
 }
 
-uint8_t quantize(float value, uint8_t bits) {
+uint16_t quantize(float value, uint16_t bits) {
     let size = (1 << bits) - 1;
-    return uint8_t(round(value * size));
+    return uint16_t(round(value * size));
 }
 
-uint8_t3 quantize(float3 value, uint8_t3 bits) {
+uint16_t3 quantize(float3 value, uint16_t3 bits) {
     let size = (uint3(1) << bits) - 1;
-    return uint8_t3(round(value * size));
+    return uint16_t3(round(value * size));
 }
 
 [BackwardDerivative(as_quantized_f_bwd)]
-float as_quantized(float value, uint8_t bits) {
+float as_quantized(float value, uint16_t bits) {
     let size = (1 << bits) - 1;
     return float(quantize(value, bits)) / size;
 }
@@ -56,7 +56,7 @@ void as_quantized_f_bwd(inout DifferentialPair<float> value, uint bits, float gr
 }
 
 [BackwardDerivative(as_quantized_v_bwd)]
-float3 as_quantized(float3 value, uint8_t3 bits) {
+float3 as_quantized(float3 value, uint16_t3 bits) {
     let size = (uint3(1) << bits) - 1;
     return float3(quantize(value, bits)) / size;
 }
@@ -92,8 +92,8 @@ struct LatentTexture {
         let b = endpoint_b.load(block_index);
         let alpha = alpha.load(block_index * 16 + (coord.x % 4) + (coord.y % 4) * 4);
         return lerp(
-            as_quantized(sigmoid(a), uint8_t3(5,6,5)),
-            as_quantized(sigmoid(b), uint8_t3(5,6,5)),
+            as_quantized(sigmoid(a), uint16_t3(5,6,5)),
+            as_quantized(sigmoid(b), uint16_t3(5,6,5)),
             as_quantized(sigmoid(alpha), 2)
         );
     }
@@ -358,8 +358,8 @@ void calculate_grads<int HiddenLayerSize, int NumChannels>(
 }
 
 uint16_t4 compress_latent_texture(LatentTexture texture, int block) {
-    let endpoint_a = uint16_t3(quantize(sigmoid(texture.endpoint_a.load(block)), uint8_t3(5,6,5)));
-    let endpoint_b = uint16_t3(quantize(sigmoid(texture.endpoint_b.load(block)), uint8_t3(5,6,5)));
+    let endpoint_a = quantize(sigmoid(texture.endpoint_a.load(block)), uint16_t3(5,6,5));
+    let endpoint_b = quantize(sigmoid(texture.endpoint_b.load(block)), uint16_t3(5,6,5));
 
     let e1 = endpoint_a.b | (endpoint_a.g << 5) | (endpoint_a.r << 11);
     let e2 = endpoint_b.b | (endpoint_b.g << 5) | (endpoint_b.r << 11);
