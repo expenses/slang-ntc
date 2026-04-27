@@ -85,13 +85,17 @@ struct LatentTexture {
 
     [Differentiable]
     float3 get_value(int mip, int2 coord) {
-        let offset = get_mip_offset(mip);
-        let size = get_mip_size(mip);
-        let coord_e = coord / 4;
-        let a = endpoint_a.load((offset/4) + coord_e.x + coord_e.y * (size/4));
-        let b = endpoint_b.load((offset/4) + coord_e.x + coord_e.y * (size/4));
-        let alpha = alpha.load(offset + coord.x + coord.y * size);
-        return lerp(a, b, alpha);
+        let block_offset = get_mip_offset(mip) / 16;
+        let block_size = get_mip_size(mip) / 4;
+        let block_index = block_offset + (coord.x / 4) + (coord.y / 4) * block_size;
+        let a = endpoint_a.load(block_index);
+        let b = endpoint_b.load(block_index);
+        let alpha = alpha.load(block_index * 16 + (coord.x % 4) + (coord.y % 4) * 4);
+        return lerp(
+            as_quantized(sigmoid(a), uint8_t3(5,6,5)),
+            as_quantized(sigmoid(b), uint8_t3(5,6,5)),
+            as_quantized(sigmoid(alpha), 2)
+        );
     }
 
     int size;
@@ -103,9 +107,8 @@ struct LatentTexture {
 
     int get_mip_offset(int mip_level) {
         int offset = 0;
-        for (int l = 0; l < mip_level; ++l) {
-            int s = size >> l;
-            offset += s * s;
+        for (int level = 0; level < mip_level; ++level) {
+            offset += (size * size) >> level * 2;
         }
         return offset;
     }
@@ -118,9 +121,7 @@ struct LatentTexture {
         float mip_fractional = mip_level - mip0;
 
         int mip0_size = get_mip_size(mip0);
-        int mip0_offset = get_mip_offset(mip0);
         int mip1_size = get_mip_size(mip1);
-        int mip1_offset = get_mip_offset(mip1);
 
         let mip0_uv = uv * float2(mip0_size) - 0.5;
         let mip0_c0 = clamp(int2(mip0_uv), int2(0), mip0_size-1);

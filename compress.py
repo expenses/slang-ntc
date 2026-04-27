@@ -84,28 +84,29 @@ class LatentTexture(spy.InstanceList):
         super().__init__(module["LatentTexture"])
         self.size = size
 
-        num_pixels = size * size
+        size_in_blocks = size // 4
+        num_blocks = size_in_blocks * size_in_blocks
 
         self.num_mip_levels = 1
-        while size > 4:
+        while size_in_blocks > 1:
             self.num_mip_levels += 1
-            size >>= 1
-            num_pixels += size * size
+            size_in_blocks >>= 1
+            num_blocks += size_in_blocks * size_in_blocks
 
         self.endpoint_a = spy.Tensor.from_numpy(
-            device, np.random.uniform(0.0, 1.0, num_pixels//16*3).astype("float32")
+            device, np.random.uniform(0.0, 1.0, num_blocks*3).astype("float32")
         ).with_grads()
         self.m_endpoint_a = spy.Tensor.zeros_like(self.endpoint_a)
         self.v_endpoint_a = spy.Tensor.zeros_like(self.endpoint_a)
 
         self.endpoint_b = spy.Tensor.from_numpy(
-            device, np.random.uniform(0.0, 1.0, num_pixels//16*3).astype("float32")
+            device, np.random.uniform(0.0, 1.0, num_blocks*3).astype("float32")
         ).with_grads()
         self.m_endpoint_b = spy.Tensor.zeros_like(self.endpoint_b)
         self.v_endpoint_b = spy.Tensor.zeros_like(self.endpoint_b)
 
         self.alpha = spy.Tensor.from_numpy(
-            device, np.random.uniform(0.0, 1.0, num_pixels).astype("float32")
+            device, np.random.uniform(0.0, 1.0, num_blocks*16).astype("float32")
         ).with_grads()
         self.m_alpha = spy.Tensor.zeros_like(self.alpha)
         self.v_alpha = spy.Tensor.zeros_like(self.alpha)
