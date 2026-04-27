@@ -370,7 +370,7 @@ uint16_t4 compress_latent_texture(LatentTexture texture, int block) {
     uint alphas = 0;
     for (int i = 0; i < 16; ++i) {
         var alpha = uint(quantize(sigmoid(texture.alpha.load(block * 16 + i)), 2));
-        
+
         // If the endpoints were switched, make sure we flip the bits
         if (max_e != e1) {
             alpha = 3 - alpha;
@@ -378,7 +378,7 @@ uint16_t4 compress_latent_texture(LatentTexture texture, int block) {
         } else if (max_e == min_e) {
             alpha = 0;
         }
-        
+
         // bc1 has the second bit as the bit that uses endpoint 2.
         if (alpha == 3) {
             alpha = 1;

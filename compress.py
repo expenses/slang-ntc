@@ -94,19 +94,19 @@ class LatentTexture(spy.InstanceList):
             num_blocks += size_in_blocks * size_in_blocks
 
         self.endpoint_a = spy.Tensor.from_numpy(
-            device, np.random.uniform(0.0, 1.0, num_blocks*3).astype("float32")
+            device, np.random.uniform(0.0, 1.0, num_blocks * 3).astype("float32")
         ).with_grads()
         self.m_endpoint_a = spy.Tensor.zeros_like(self.endpoint_a)
         self.v_endpoint_a = spy.Tensor.zeros_like(self.endpoint_a)
 
         self.endpoint_b = spy.Tensor.from_numpy(
-            device, np.random.uniform(0.0, 1.0, num_blocks*3).astype("float32")
+            device, np.random.uniform(0.0, 1.0, num_blocks * 3).astype("float32")
         ).with_grads()
         self.m_endpoint_b = spy.Tensor.zeros_like(self.endpoint_b)
         self.v_endpoint_b = spy.Tensor.zeros_like(self.endpoint_b)
 
         self.alpha = spy.Tensor.from_numpy(
-            device, np.random.uniform(0.0, 1.0, num_blocks*16).astype("float32")
+            device, np.random.uniform(0.0, 1.0, num_blocks * 16).astype("float32")
         ).with_grads()
         self.m_alpha = spy.Tensor.zeros_like(self.alpha)
         self.v_alpha = spy.Tensor.zeros_like(self.alpha)
@@ -226,15 +226,10 @@ for mip in range(tex[0].mip_count):
 
 blocks = spy.Tensor.from_numpy(
     device,
-    np.zeros((
-        network.latent_texture_1.endpoint_a.shape[0]//3,
-        4
-    )).astype("uint16")
+    np.zeros((network.latent_texture_1.endpoint_a.shape[0] // 3, 4)).astype("uint16"),
 )
 module.compress_latent_texture(
-    texture=network.latent_texture_1,
-    block=spy.call_id(),
-    _result=blocks
+    texture=network.latent_texture_1, block=spy.call_id(), _result=blocks
 )
 desc = spy.TextureDesc()
 desc.width = network.latent_texture_1.size
@@ -246,16 +241,13 @@ tex = device.create_texture(desc)
 offset = 0
 for mip in range(desc.mip_count):
     size_in_blocks = desc.width >> 2 >> mip
-    tex.copy_from_numpy(blocks.to_numpy()[offset:offset+size_in_blocks * size_in_blocks],mip=mip)
+    tex.copy_from_numpy(
+        blocks.to_numpy()[offset : offset + size_in_blocks * size_in_blocks], mip=mip
+    )
     offset += size_in_blocks * size_in_blocks
 
 ress = spy.Tensor.from_numpy(
-    device,
-    np.zeros((
-        (tex.width),
-        (tex.width),
-        4
-    )).astype("float32")
+    device, np.zeros(((tex.width), (tex.width), 4)).astype("float32")
 )
 
 
@@ -264,7 +256,7 @@ module.render_texture(
     pixel=spy.call_id(),
     _result=ress,
     samp=samp,
-    resolution=spy.int2(tex.width, tex.width)
+    resolution=spy.int2(tex.width, tex.width),
 )
 spy.Bitmap(ress.to_numpy()).write(f"bc1.exr")
 module.render_tensors(
