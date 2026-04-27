@@ -35,11 +35,19 @@ struct NetworkParameters<int Inputs, int Outputs> {
 }
 
 struct LatentTexture {
-    DiffTensor<float3, 1> texture;
+    DiffTensor<float3, 1> endpoint_a;
+    DiffTensor<float3, 1> endpoint_b;
+    DiffTensor<float, 1> alpha;
 
     [Differentiable]
     float3 get_value(int mip, int2 coord) {
-        return texture.load(get_mip_offset(mip) + coord.x + coord.y * get_mip_size(mip));
+        let offset = get_mip_offset(mip);
+        let size = get_mip_size(mip);
+        let coord_e = coord / 4;
+        let a = endpoint_a.load((offset/4) + coord_e.x + coord_e.y * (size/4));
+        let b = endpoint_b.load((offset/4) + coord_e.x + coord_e.y * (size/4));
+        let alpha = alpha.load(offset + coord.x + coord.y * size);
+        return lerp(a, b, alpha);
     }
 
     int size;

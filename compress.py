@@ -84,30 +84,55 @@ class LatentTexture(spy.InstanceList):
         super().__init__(module["LatentTexture"])
         self.size = size
 
-        num_latents = size * size * 3
+        num_pixels = size * size
 
         self.num_mip_levels = 1
         while size > 4:
             self.num_mip_levels += 1
             size >>= 1
-            num_latents += size * size * 3
-        print(num_latents)
+            num_pixels += size * size
 
-        # Initialize to random latent texture
-        initial_latents = np.random.uniform(0.0, 1.0, num_latents).astype("float32")
-        self.texture = spy.Tensor.from_numpy(device, initial_latents).with_grads()
+        self.endpoint_a = spy.Tensor.from_numpy(
+            device, np.random.uniform(0.0, 1.0, num_pixels).astype("float32")
+        ).with_grads()
+        self.m_endpoint_a = spy.Tensor.zeros_like(self.endpoint_a)
+        self.v_endpoint_a = spy.Tensor.zeros_like(self.endpoint_a)
 
-        # Temp data for Adam optimizer.
-        self.m_texture = spy.Tensor.zeros_like(self.texture)
-        self.v_texture = spy.Tensor.zeros_like(self.texture)
+        self.endpoint_b = spy.Tensor.from_numpy(
+            device, np.random.uniform(0.0, 1.0, num_pixels).astype("float32")
+        ).with_grads()
+        self.m_endpoint_b = spy.Tensor.zeros_like(self.endpoint_b)
+        self.v_endpoint_b = spy.Tensor.zeros_like(self.endpoint_b)
+
+        self.alpha = spy.Tensor.from_numpy(
+            device, np.random.uniform(0.0, 1.0, num_pixels).astype("float32")
+        ).with_grads()
+        self.m_alpha = spy.Tensor.zeros_like(self.alpha)
+        self.v_alpha = spy.Tensor.zeros_like(self.alpha)
 
     # Calls the Slang 'optimize' function for biases and weights
     def optimize(self, learning_rate: float, optimize_counter: int):
         module.optimizer_step(
-            self.texture,
-            self.texture.grad,
-            self.m_texture,
-            self.v_texture,
+            self.alpha,
+            self.alpha.grad,
+            self.m_alpha,
+            self.v_alpha,
+            learning_rate,
+            optimize_counter,
+        )
+        module.optimizer_step(
+            self.endpoint_a,
+            self.endpoint_a.grad,
+            self.m_endpoint_a,
+            self.v_endpoint_a,
+            learning_rate,
+            optimize_counter,
+        )
+        module.optimizer_step(
+            self.endpoint_b,
+            self.endpoint_b.grad,
+            self.m_endpoint_b,
+            self.v_endpoint_b,
             learning_rate,
             optimize_counter,
         )
