@@ -8,37 +8,8 @@ float16_t fma(float16_t a, float16_t b, float16_t c) {
 }
 
 struct NetworkParameters<int Inputs, int Outputs> {
-    Tensor<float16_t, 1> biases;
-    Tensor<float16_t, 2> weights;
-
-    // Unlike the mipmapping example, where the parameters for each texel are independent and
-    // each texel only affect the material for one sample, the network weights are shared for
-    // the entire neural texture. In that case, we need to sum the weight gradients from all
-    // the training samples in the batch. We can do this using the atomic tensor
-    AtomicTensor<float, 1> biases_grad;
-    AtomicTensor<float, 2> weights_grad;
-
-    [Differentiable]
-    float16_t get_bias(int neuron) {
-        return biases.load(neuron);
-    }
-
-    [Differentiable]
-    float16_t get_weight(int neuron, int input) {
-        return weights.load(neuron, input);
-    }
-
-    [BackwardDerivativeOf(get_bias)]
-    void get_bias_bwd(int neuron, float16_t grad) {
-        // .set on an atomic tensor atomically adds the result
-        biases_grad.add(neuron, grad);
-    }
-
-    [BackwardDerivativeOf(get_weight)]
-    void get_weight_bwd(int neuron, int input, float16_t grad) {
-        // .set on an atomic tensor atomically adds the result
-        weights_grad.add(neuron, input, grad);
-    }
+    DiffTensor<float, 1> biases;
+    DiffTensor<float, 2> weights;
 
     // Evaluate all neurons in the layer
     [Differentiable]
@@ -54,9 +25,9 @@ struct NetworkParameters<int Inputs, int Outputs> {
             float16_t sum = float16_t(0.0h);
             [ForceUnroll]
             for (int col = 0; col < Inputs; ++col) {
-                sum = fma(get_weight(row, col), x[col], sum);
+                sum = fma(weights.load(row, col), x[col], sum);
             }
-            y[row] = sum + get_bias(row);
+            y[row] = sum + biases.load(row);
         }
 
         return y;
@@ -64,21 +35,11 @@ struct NetworkParameters<int Inputs, int Outputs> {
 }
 
 struct LatentTexture {
-    Tensor<float16_t3, 1> texture;
-    AtomicTensor<float3, 1> texture_grads;
+    DiffTensor<float3, 1> texture;
 
-    [BackwardDerivative(get_tex_bwd)]
-    float3 get_tex(int index) {
-        return float3(texture[index]);
-    }
-
-    void get_tex_bwd(int index, float3 latent_grad) {
-        texture_grads.add(index, latent_grad);
-    }
-    
     [Differentiable]
     float3 get_value(int mip, int2 coord) {
-        return get_tex(get_mip_offset(mip) + coord.x + coord.y * get_mip_size(mip));
+        return texture.load(get_mip_offset(mip) + coord.x + coord.y * get_mip_size(mip));
     }
 
     int size;
@@ -258,9 +219,8 @@ struct LCG {
     }
 };
 
-
 void optimizer_step(
-    inout float16_t primal,
+    inout float primal,
     inout float grad,
     inout float mean,
     inout float variance,
@@ -284,11 +244,12 @@ void optimizer_step(
     float step = learning_rate * mHat / (sqrt(vHat) + ADAM_EPSILON);
 
     // Take an adam step
-    primal -= float16_t(step);
+    primal -= step;
 
     // Because we now accumulate gradients, we need to clear the gradient to zero before the next iteration
     grad = 0.0f;
 }
+
 
 void sum_loss<int HiddenLayerSize, int NumChannels>(
     int2 pixel,
