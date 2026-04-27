@@ -25,9 +25,9 @@ struct NetworkParameters<int Inputs, int Outputs> {
             float16_t sum = float16_t(0.0h);
             [ForceUnroll]
             for (int col = 0; col < Inputs; ++col) {
-                sum = fma(weights.load(row, col), x[col], sum);
+                sum = fma(float16_t(weights.load(row, col)), x[col], sum);
             }
-            y[row] = sum + biases.load(row);
+            y[row] = sum + float16_t(biases.load(row));
         }
 
         return y;
