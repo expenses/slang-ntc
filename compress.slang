@@ -67,15 +67,20 @@ struct LatentTexture {
     Tensor<float16_t3, 1> texture;
     AtomicTensor<float3, 1> texture_grads;
 
-    [BackwardDerivative(get_value_bwd)]
-    float3 get_value(int index) {
+    [BackwardDerivative(get_tex_bwd)]
+    float3 get_tex(int index) {
         return float3(texture[index]);
     }
 
-    void get_value_bwd(int index, float3 latent_grad) {
+    void get_tex_bwd(int index, float3 latent_grad) {
         texture_grads.add(index, latent_grad);
     }
-
+    
+    [Differentiable]
+    float3 get_value(int mip, int2 coord) {
+        return get_tex(get_mip_offset(mip) + coord.x + coord.y * get_mip_size(mip));
+    }
+    
     int size;
     int num_mip_levels;
 
@@ -114,14 +119,14 @@ struct LatentTexture {
         let mip1_c1 = min(mip1_c0 + 1, mip1_size - 1);
         let mip1_fractional_uv = mip1_uv - mip1_c0;
 
-        let v_00_m0 = get_value(mip0_offset + mip0_c0.x + mip0_c0.y * mip0_size);
-        let v_10_m0 = get_value(mip0_offset + mip0_c1.x + mip0_c0.y * mip0_size);
-        let v_01_m0 = get_value(mip0_offset + mip0_c0.x + mip0_c1.y * mip0_size);
-        let v_11_m0 = get_value(mip0_offset + mip0_c1.x + mip0_c1.y * mip0_size);
-        let v_00_m1 = get_value(mip1_offset + mip1_c0.x + mip1_c0.y * mip1_size);
-        let v_10_m1 = get_value(mip1_offset + mip1_c1.x + mip1_c0.y * mip1_size);
-        let v_01_m1 = get_value(mip1_offset + mip1_c0.x + mip1_c1.y * mip1_size);
-        let v_11_m1 = get_value(mip1_offset + mip1_c1.x + mip1_c1.y * mip1_size);
+        let v_00_m0 = get_value(mip0, int2(mip0_c0.x, mip0_c0.y));
+        let v_10_m0 = get_value(mip0, int2(mip0_c1.x, mip0_c0.y));
+        let v_01_m0 = get_value(mip0, int2(mip0_c0.x, mip0_c1.y));
+        let v_11_m0 = get_value(mip0, int2(mip0_c1.x, mip0_c1.y));
+        let v_00_m1 = get_value(mip1, int2(mip1_c0.x, mip1_c0.y));
+        let v_10_m1 = get_value(mip1, int2(mip1_c1.x, mip1_c0.y));
+        let v_01_m1 = get_value(mip1, int2(mip1_c0.x, mip1_c1.y));
+        let v_11_m1 = get_value(mip1, int2(mip1_c1.x, mip1_c1.y));
         return float16_t3(
             lerp(
                 lerp(
