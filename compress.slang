@@ -80,7 +80,7 @@ struct LatentTexture {
     float3 get_value(int mip, int2 coord) {
         return get_tex(get_mip_offset(mip) + coord.x + coord.y * get_mip_size(mip));
     }
-    
+
     int size;
     int num_mip_levels;
 

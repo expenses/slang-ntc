@@ -39,6 +39,7 @@ print(tex)
 tex_size = tex[0].width
 num_channels = len(tex) * 3
 
+
 class NetworkParameters(spy.InstanceList):
     def __init__(self, inputs: int, outputs: int):
         super().__init__(module[f"NetworkParameters<{inputs},{outputs}>"])
@@ -176,14 +177,14 @@ for optimize_counter in range(args.steps):
     if optimize_counter % 1000 == 0 or optimize_counter == args.steps - 1:
         loss_output = spy.Tensor.from_numpy(device, np.zeros((1,)).astype("float32"))
         module.sum_loss(
-            pixel=spy.grid((tex_size,tex_size)),
+            pixel=spy.grid((tex_size, tex_size)),
             resolution=tex_size,
             network=network,
             reference=tex,
             total=loss_output,
             samp=samp,
         )
-        mae = loss_output.to_numpy()[0] / tex_size / tex_size / num_channels;
+        mae = loss_output.to_numpy()[0] / tex_size / tex_size / num_channels
         psnr = 20 * np.log10(1.0 / mae) if mae > 0 else float("inf")
         print(f"Loss: {mae:.8f} PSNR: {psnr:.4f} dB")
 end = time.time()
@@ -192,9 +193,7 @@ print(end - start)
 for mip in range(tex[0].mip_count):
     output = spy.Tensor.from_numpy(
         device,
-        np.zeros((tex_size >> mip, tex_size >> mip, num_channels)).astype(
-            "float16"
-        ),
+        np.zeros((tex_size >> mip, tex_size >> mip, num_channels)).astype("float16"),
     )
     module.render(
         pixel=spy.call_id(),
