@@ -356,3 +356,34 @@ void calculate_grads<int HiddenLayerSize, int NumChannels>(
         gradient_seed[i] = 1.0f;
     bwd_diff(loss)(uv, mip, reference, samp, network, gradient_seed);
 }
+
+uint16_t4 compress_latent_texture(LatentTexture texture, int block) {
+    let endpoint_a = uint16_t3(quantize(sigmoid(texture.endpoint_a.load(block)), uint8_t3(5,6,5)));
+    let endpoint_b = uint16_t3(quantize(sigmoid(texture.endpoint_b.load(block)), uint8_t3(5,6,5)));
+
+    uint16_t top = 0;
+    for (int i = 0; i < 8; ++i) {
+        let alpha = quantize(sigmoid(texture.alpha.load(block*16+i)), 2);
+        top |= alpha << i * 2;
+    }
+
+    uint16_t bottom = 0;
+    for (int i = 0; i < 8; ++i) {
+        let alpha = quantize(sigmoid(texture.alpha.load(block*16+i+8)), 2);
+        bottom |= alpha << i * 2;
+    }
+
+    return uint16_t4(
+        endpoint_a.b | (endpoint_a.g << 5) | (endpoint_a.r << 11),
+        endpoint_b.b | (endpoint_b.g << 5) | (endpoint_b.r << 11),
+        0,//top,//f,//endpoint_a.b | (endpoint_a.g << 5) | (endpoint_a.r << 11),
+        0,//bottom,//f,//endpoint_b.b | (endpoint_b.g << 5) | (endpoint_b.r << 11),
+    );
+}
+
+float4 render_texture(
+    Texture2D<float4> texture,
+    int2 pixel,
+) {
+    return texture[pixel];
+}

@@ -222,3 +222,44 @@ for mip in range(tex[0].mip_count):
         spy.Bitmap(outputs[i]).convert(
             component_type=spy.Bitmap.ComponentType.uint8, srgb_gamma=is_srgb
         ).write(f"{i}_m{mip}.png")
+
+
+blocks = spy.Tensor.from_numpy(
+    device,
+    np.zeros((
+        (network.latent_texture_1.size // 4) * (network.latent_texture_1.size // 4),
+        4
+    )).astype("uint16")
+)
+module.compress_latent_texture(
+    texture=network.latent_texture_1,
+    block=spy.call_id(),
+    _result=blocks
+)
+desc = spy.TextureDesc()
+desc.width = network.latent_texture_1.size
+desc.height = network.latent_texture_1.size
+desc.format = spy.Format.bc1_unorm_srgb
+desc.usage = spy.TextureUsage.shader_resource
+tex = device.create_texture(desc)
+tex.copy_from_numpy(blocks.to_numpy())
+
+print(blocks.to_numpy())
+
+ress = spy.Tensor.from_numpy(
+    device,
+    np.zeros((
+        (network.latent_texture_1.size),
+        (network.latent_texture_1.size),
+        4
+    )).astype("float32")
+)
+    
+
+module.render_texture(
+    texture=tex,
+    pixel=spy.call_id(),
+    _result=ress,
+)
+print(ress.to_numpy());
+spy.Bitmap(ress.to_numpy()).write(f"bc1.exr")
