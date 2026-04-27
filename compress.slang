@@ -34,6 +34,50 @@ struct NetworkParameters<int Inputs, int Outputs> {
     }
 }
 
+uint8_t quantize(float value, uint8_t bits) {
+    let size = (1 << bits) - 1;
+    return uint8_t(round(value * size));
+}
+
+uint8_t3 quantize(float3 value, uint8_t3 bits) {
+    let size = (uint3(1) << bits) - 1;
+    return uint8_t3(round(value * size));
+}
+
+[BackwardDerivative(as_quantized_f_bwd)]
+float as_quantized(float value, uint8_t bits) {
+    let size = (1 << bits) - 1;
+    return float(quantize(value, bits)) / size;
+}
+
+void as_quantized_f_bwd(inout DifferentialPair<float> value, uint bits, float grad) {
+    // pass gradient straight through
+    value = DifferentialPair<float>(value.p, grad);
+}
+
+[BackwardDerivative(as_quantized_v_bwd)]
+float3 as_quantized(float3 value, uint8_t3 bits) {
+    let size = (uint3(1) << bits) - 1;
+    return float3(quantize(value, bits)) / size;
+}
+
+void as_quantized_v_bwd(inout DifferentialPair<float3> value, uint3 bits, float3 grad) {
+    // pass gradient straight through
+    value = DifferentialPair<float3>(value.p, grad);
+}
+
+[Differentiable]
+float sigmoid(float x) {
+    let expX = exp(x);
+    return expX / (expX + 1.0f);
+}
+
+[Differentiable]
+float3 sigmoid(float3 x) {
+    let expX = exp(x);
+    return expX / (expX + 1.0f);
+}
+
 struct LatentTexture {
     DiffTensor<float3, 1> endpoint_a;
     DiffTensor<float3, 1> endpoint_b;
