@@ -227,7 +227,7 @@ for mip in range(tex[0].mip_count):
 blocks = spy.Tensor.from_numpy(
     device,
     np.zeros((
-        (network.latent_texture_1.size // 4) * (network.latent_texture_1.size // 4),
+        network.latent_texture_1.endpoint_a.shape[0]//3,
         4
     )).astype("uint16")
 )
@@ -241,10 +241,13 @@ desc.width = network.latent_texture_1.size
 desc.height = network.latent_texture_1.size
 desc.format = spy.Format.bc1_unorm
 desc.usage = spy.TextureUsage.shader_resource
+desc.mip_count = network.latent_texture_1.num_mip_levels
 tex = device.create_texture(desc)
-tex.copy_from_numpy(blocks.to_numpy())
-
-print(blocks.to_numpy())
+offset = 0
+for mip in range(desc.mip_count):
+    size_in_blocks = desc.width >> 2 >> mip
+    tex.copy_from_numpy(blocks.to_numpy()[offset:offset+size_in_blocks * size_in_blocks],mip=mip)
+    offset += size_in_blocks * size_in_blocks
 
 ress = spy.Tensor.from_numpy(
     device,
