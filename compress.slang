@@ -3,7 +3,7 @@
 import slangpy;
 
 [Differentiable]
-float16_t fma(float16_t a, float16_t b, float16_t c) {
+half fma(half a, half b, half c) {
     return a * b + c;
 }
 
@@ -13,8 +13,8 @@ struct NetworkParameters<int Inputs, int Outputs> {
 
     // Evaluate all neurons in the layer
     [Differentiable]
-    float16_t[Outputs] forward(float16_t[Inputs] x) {
-        float16_t[Outputs] y;
+    half[Outputs] forward(half[Inputs] x) {
+        half[Outputs] y;
         // For optimal runtime performance, using [ForceUnroll] here can be better. However, the downstream
         // compiler on some platforms (in particular, the DXC compiler on D3D12) may not cope well with
         // unrolled loops and compilation times grow exponentially. Using MaxIters on the outer loop
@@ -22,12 +22,12 @@ struct NetworkParameters<int Inputs, int Outputs> {
         [MaxIters(Outputs)]
         for (int row = 0; row < Outputs; ++row) {
             // Sum up bias plus weighted inputs for 1 neuron
-            float16_t sum = float16_t(0.0h);
+            half sum = half(0.0h);
             [ForceUnroll]
             for (int col = 0; col < Inputs; ++col) {
-                sum = fma(float16_t(weights.load(row, col)), x[col], sum);
+                sum = fma(half(weights.load(row, col)), x[col], sum);
             }
-            y[row] = sum + float16_t(biases.load(row));
+            y[row] = sum + half(biases.load(row));
         }
 
         return y;
@@ -114,7 +114,7 @@ struct LatentTexture {
     }
 
     [Differentiable]
-    float16_t3 sample(no_diff float2 uv, no_diff float mip_level) {
+    half3 sample(no_diff float2 uv, no_diff float mip_level) {
         mip_level = clamp(mip_level, 0.0, float(num_mip_levels - 1));
         int mip0 = int(mip_level);
         int mip1 = min(mip0 + 1, num_mip_levels - 1);
@@ -141,7 +141,7 @@ struct LatentTexture {
         let v_10_m1 = get_value(mip1, int2(mip1_c1.x, mip1_c0.y));
         let v_01_m1 = get_value(mip1, int2(mip1_c0.x, mip1_c1.y));
         let v_11_m1 = get_value(mip1, int2(mip1_c1.x, mip1_c1.y));
-        return float16_t3(
+        return half3(
             lerp(
                 lerp(
                     lerp(v_00_m0, v_10_m0, mip0_fractional_uv.x),
@@ -169,12 +169,12 @@ struct Network<int HiddenLayerSize, int NumChannels> {
     NetworkParameters<HiddenLayerSize, NumChannels>  layer2;
 
     [Differentiable]
-    float16_t[NumChannels] eval(no_diff float2 uv, no_diff float mip_level) {
+    half[NumChannels] eval(no_diff float2 uv, no_diff float mip_level) {
         let s_1 = latent_texture_1.sample(uv, mip_level);
         let s_2 = latent_texture_2.sample(uv+0.5, mip_level);
         let s_3 = latent_texture_3.sample(uv, mip_level-1);
         let s_4 = latent_texture_4.sample(uv+0.5, mip_level-1);
-        float16_t half_inputs[12] = {
+        half half_inputs[12] = {
             s_1[0],
             s_1[1],
             s_1[2],
@@ -188,11 +188,11 @@ struct Network<int HiddenLayerSize, int NumChannels> {
             s_4[1],
             s_4[2],
         };
-        float16_t output0[HiddenLayerSize] = layer0.forward(half_inputs);
+        half output0[HiddenLayerSize] = layer0.forward(half_inputs);
         [ForceUnroll]
         for (int i = 0; i < HiddenLayerSize; ++i)
             output0[i] = relu(output0[i]);
-        float16_t output1[HiddenLayerSize] = layer1.forward(output0);
+        half output1[HiddenLayerSize] = layer1.forward(output0);
         [ForceUnroll]
         for (int i = 0; i < HiddenLayerSize; ++i)
             output1[i] = relu(output1[i]);
@@ -201,12 +201,12 @@ struct Network<int HiddenLayerSize, int NumChannels> {
 }
 
 [Differentiable]
-float16_t relu(float16_t x) {
-    return max(x, float16_t(0.0));
+half relu(half x) {
+    return max(x, half(0.0));
 }
 
 // "Render" the neural texture
-float16_t[NumChannels] render<int HiddenLayerSize, int NumChannels>(
+half[NumChannels] render<int HiddenLayerSize, int NumChannels>(
     int2 pixel,
     int resolution,
     int mip,
