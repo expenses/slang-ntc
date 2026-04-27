@@ -93,13 +93,13 @@ class LatentTexture(spy.InstanceList):
             num_pixels += size * size
 
         self.endpoint_a = spy.Tensor.from_numpy(
-            device, np.random.uniform(0.0, 1.0, num_pixels).astype("float32")
+            device, np.random.uniform(0.0, 1.0, num_pixels//16*3).astype("float32")
         ).with_grads()
         self.m_endpoint_a = spy.Tensor.zeros_like(self.endpoint_a)
         self.v_endpoint_a = spy.Tensor.zeros_like(self.endpoint_a)
 
         self.endpoint_b = spy.Tensor.from_numpy(
-            device, np.random.uniform(0.0, 1.0, num_pixels).astype("float32")
+            device, np.random.uniform(0.0, 1.0, num_pixels//16*3).astype("float32")
         ).with_grads()
         self.m_endpoint_b = spy.Tensor.zeros_like(self.endpoint_b)
         self.v_endpoint_b = spy.Tensor.zeros_like(self.endpoint_b)
