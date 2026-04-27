@@ -361,29 +361,56 @@ uint16_t4 compress_latent_texture(LatentTexture texture, int block) {
     let endpoint_a = uint16_t3(quantize(sigmoid(texture.endpoint_a.load(block)), uint8_t3(5,6,5)));
     let endpoint_b = uint16_t3(quantize(sigmoid(texture.endpoint_b.load(block)), uint8_t3(5,6,5)));
 
-    uint16_t top = 0;
-    for (int i = 0; i < 8; ++i) {
-        let alpha = quantize(sigmoid(texture.alpha.load(block*16+i)), 2);
-        top |= alpha << i * 2;
-    }
+    let e1 = endpoint_a.b | (endpoint_a.g << 5) | (endpoint_a.r << 11);
+    let e2 = endpoint_b.b | (endpoint_b.g << 5) | (endpoint_b.r << 11);
+    // bc1 has a seperate mode if e2 >= e1 that we want to avoid
+    let max_e = max(e1, e2);
+    let min_e = min(e1, e2);
 
-    uint16_t bottom = 0;
-    for (int i = 0; i < 8; ++i) {
-        let alpha = quantize(sigmoid(texture.alpha.load(block*16+i+8)), 2);
-        bottom |= alpha << i * 2;
+    uint alphas = 0;
+    for (int i = 0; i < 16; ++i) {
+        var alpha = uint(quantize(sigmoid(texture.alpha.load(block * 16 + i)), 2));
+        
+        // If the endpoints were switched, make sure we flip the bits
+        if (max_e != e1) {
+            alpha = 3 - alpha;
+        // If the end points are identical then we're in mode 2 and should just use the first endpoint
+        } else if (max_e == min_e) {
+            alpha = 0;
+        }
+        
+        // bc1 has the second bit as the bit that uses endpoint 2.
+        if (alpha == 3) {
+            alpha = 1;
+        } else if (alpha == 1 || alpha == 2) {
+            alpha ++;
+        }
+        alphas |= alpha << i * 2;
     }
 
     return uint16_t4(
-        endpoint_a.b | (endpoint_a.g << 5) | (endpoint_a.r << 11),
-        endpoint_b.b | (endpoint_b.g << 5) | (endpoint_b.r << 11),
-        0,//top,//f,//endpoint_a.b | (endpoint_a.g << 5) | (endpoint_a.r << 11),
-        0,//bottom,//f,//endpoint_b.b | (endpoint_b.g << 5) | (endpoint_b.r << 11),
+        max_e,
+        min_e,
+        uint16_t(alphas),
+        uint16_t(alphas >> 16),
     );
+}
+
+float4 render_tensors(
+    LatentTexture texture,
+    int2 pixel,
+    int2 resolution,
+) {
+    let uv = (float2(pixel) + 0.5f) / float2(resolution);
+    return float4(texture.sample(uv, 0), 1);
 }
 
 float4 render_texture(
     Texture2D<float4> texture,
+    SamplerState samp,
     int2 pixel,
+    int2 resolution,
 ) {
-    return texture[pixel];
+    let uv = (float2(pixel) + 0.5f) / float2(resolution);
+    return texture.SampleLevel(samp, uv, 0);
 }

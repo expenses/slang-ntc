@@ -239,7 +239,7 @@ module.compress_latent_texture(
 desc = spy.TextureDesc()
 desc.width = network.latent_texture_1.size
 desc.height = network.latent_texture_1.size
-desc.format = spy.Format.bc1_unorm_srgb
+desc.format = spy.Format.bc1_unorm
 desc.usage = spy.TextureUsage.shader_resource
 tex = device.create_texture(desc)
 tex.copy_from_numpy(blocks.to_numpy())
@@ -249,17 +249,25 @@ print(blocks.to_numpy())
 ress = spy.Tensor.from_numpy(
     device,
     np.zeros((
-        (network.latent_texture_1.size),
-        (network.latent_texture_1.size),
+        (tex.width),
+        (tex.width),
         4
     )).astype("float32")
 )
-    
+
 
 module.render_texture(
     texture=tex,
     pixel=spy.call_id(),
     _result=ress,
+    samp=samp,
+    resolution=spy.int2(tex.width, tex.width)
 )
-print(ress.to_numpy());
 spy.Bitmap(ress.to_numpy()).write(f"bc1.exr")
+module.render_tensors(
+    texture=network.latent_texture_1,
+    pixel=spy.call_id(),
+    _result=ress,
+    resolution=spy.int2(tex.width, tex.width),
+)
+spy.Bitmap(ress.to_numpy()).write(f"tens.exr")
