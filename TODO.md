@@ -1,3 +1,2 @@
-- BC1 compression
 - Change hidden layer size to 64
 - Performance improvements
