@@ -199,7 +199,7 @@ for optimize_counter in range(args.steps):
             samp=samp,
         )
         mae = loss_output.to_numpy()[0] / tex_size / tex_size / num_channels
-        psnr = 20 * np.log10(1.0 / mae) if mae > 0 else float("inf")
+        psnr = 10 * np.log10(1.0 / mae) if mae > 0 else float("inf")
         print(f"Loss: {mae:.8f} PSNR: {psnr:.4f} dB")
 end = time.time()
 print(end - start)

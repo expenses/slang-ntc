@@ -256,10 +256,13 @@ float[NumChannels] loss<int HiddenLayerSize, int NumChannels>(
     float[NumChannels] error;
     [ForceUnroll]
     for (int i = 0; i < NumChannels/3; ++i) {
-        float3 sample = (no_diff reference[i].SampleLevel(samp, uv, mip_level)).rgb;
-        error[i*3] = abs(sample[0] - float(color[i*3]));
-        error[i*3+1] = abs(sample[1] - float(color[i*3+1]));
-        error[i*3+2] = abs(sample[2] - float(color[i*3+2]));
+        let value = float3(color[i*3], color[i*3+1], color[i*3+2]);
+        let ref_sample = (no_diff reference[i].SampleLevel(samp, uv, mip_level)).rgb;
+        let loss = L2(value, ref_sample);
+
+        error[i*3] = loss[0];
+        error[i*3+1] = loss[1];
+        error[i*3+2] = loss[2];
     }
     return error;
 }
