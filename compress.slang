@@ -233,6 +233,18 @@ float[NumChannels] calculate_loss<int HiddenLayerSize, int NumChannels>(
 }
 
 [Differentiable]
+float3 L2(float3 value, float3 reference) {
+    let diff = value - reference;
+    return diff * diff;
+}
+
+[Differentiable]
+float3 L1(float3 value, float3 reference) {
+    let diff = value - reference;
+    return abs(diff);
+}
+
+[Differentiable]
 float[NumChannels] loss<int HiddenLayerSize, int NumChannels>(
     no_diff float2 uv,
     no_diff float mip_level,
