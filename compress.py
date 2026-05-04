@@ -249,6 +249,12 @@ def train(args, device, module):
             args.output,
             size=network.latent_texture_1.size,
             num_channels=num_channels,
+
+            lt1_blocks = compress_blocks(device, module, network.latent_texture_1).to_numpy(),
+            lt2_blocks = compress_blocks(device, module, network.latent_texture_2).to_numpy(),
+            lt3_blocks = compress_blocks(device, module, network.latent_texture_3).to_numpy(),
+            lt4_blocks = compress_blocks(device, module, network.latent_texture_4).to_numpy(),
+
             lt1_endpoint_a=network.latent_texture_1.endpoint_a.to_numpy(),
             lt1_endpoint_b=network.latent_texture_1.endpoint_b.to_numpy(),
             lt1_alpha=network.latent_texture_1.alpha.to_numpy(),
@@ -288,12 +294,7 @@ def eval(args, device, module):
     load_tensor(network.latent_texture_4.endpoint_a, data["lt4_endpoint_a"])
     load_tensor(network.latent_texture_4.endpoint_b, data["lt4_endpoint_b"])
     load_tensor(network.latent_texture_4.alpha, data["lt4_alpha"])
-    load_tensor(network.layer0.biases, data["layer0_biases"])
-    load_tensor(network.layer0.weights, data["layer0_weights"])
-    load_tensor(network.layer1.biases, data["layer1_biases"])
-    load_tensor(network.layer1.weights, data["layer1_weights"])
-    load_tensor(network.layer2.biases, data["layer2_biases"])
-    load_tensor(network.layer2.weights, data["layer2_weights"])
+    load_tensor(network.weights_and_biases, data["weights_and_biases"])
 
     output = render_to_tensor(device, module, network, num_channels, size, 0).to_numpy()
 
