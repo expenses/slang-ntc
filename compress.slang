@@ -7,27 +7,6 @@ half fma(half a, half b, half c) {
     return a * b + c;
 }
 
-[Differentiable]
-half[Outputs] forward<int Inputs, int Outputs>(half[Inputs] x, DiffTensor<float, 1> weights_and_biases, int offset) {
-    half[Outputs] y;
-    // For optimal runtime performance, using [ForceUnroll] here can be better. However, the downstream
-    // compiler on some platforms (in particular, the DXC compiler on D3D12) may not cope well with
-    // unrolled loops and compilation times grow exponentially. Using MaxIters on the outer loop
-    // here helps avoid this.
-    [MaxIters(Outputs)]
-    for (int row = 0; row < Outputs; ++row) {
-        // Sum up bias plus weighted inputs for 1 neuron
-        half sum = half(0.0h);
-        [ForceUnroll]
-        for (int col = 0; col < Inputs; ++col) {
-            sum = fma(half(weights_and_biases.load(col * Outputs + row + offset)), x[col], sum);
-        }
-        y[row] = sum + half(weights_and_biases.load(Outputs * Inputs + row + offset));
-    }
-
-    return y;
-}
-
 uint16_t quantize(float value, uint16_t bits) {
     let size = (1 << bits) - 1;
     return uint16_t(round(value * size));
@@ -161,16 +140,37 @@ struct Network<int NumChannels> {
     DiffTensor<float, 1> weights_and_biases;
 
     [Differentiable]
+    half[Outputs] forward<int Inputs, int Outputs>(half[Inputs] x, int offset) {
+        half[Outputs] y;
+        // For optimal runtime performance, using [ForceUnroll] here can be better. However, the downstream
+        // compiler on some platforms (in particular, the DXC compiler on D3D12) may not cope well with
+        // unrolled loops and compilation times grow exponentially. Using MaxIters on the outer loop
+        // here helps avoid this.
+        [MaxIters(Outputs)]
+        for (int row = 0; row < Outputs; ++row) {
+            // Sum up bias plus weighted inputs for 1 neuron
+            half sum = half(0.0h);
+            [ForceUnroll]
+            for (int col = 0; col < Inputs; ++col) {
+                sum = fma(half(weights_and_biases.load(col * Outputs + row + offset)), x[col], sum);
+            }
+            y[row] = sum + half(weights_and_biases.load(Outputs * Inputs + row + offset));
+        }
+
+        return y;
+    }
+
+    [Differentiable]
     half[16] eval_from_inputs(half[16] inputs) {
-        half output0[64] = forward<16, 64>(inputs, weights_and_biases, 0);
+        half output0[64] = forward<16, 64>(inputs, 0);
         [ForceUnroll]
         for (int i = 0; i < 64; ++i)
             output0[i] = relu(output0[i]);
-        half output1[64] = forward<64, 64>(output0, weights_and_biases, 16*64 + 64);
+        half output1[64] = forward<64, 64>(output0, 16*64 + 64);
         [ForceUnroll]
         for (int i = 0; i < 64; ++i)
             output1[i] = relu(output1[i]);
-        return forward<64, 16>(output1, weights_and_biases, 16*64 + 64 + 64*64 + 64);
+        return forward<64, 16>(output1, 16*64 + 64 + 64*64 + 64);
     }
 
     [Differentiable]
