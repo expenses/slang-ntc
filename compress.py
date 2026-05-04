@@ -265,6 +265,29 @@ def train(args, device, module):
     # )
     # spy.Bitmap(ress.to_numpy()).write(f"tens.exr")
 
+    if args.output:
+        np.savez(
+            args.output,
+            lt1_endpoint_a=network.latent_texture_1.endpoint_a.to_numpy(),
+            lt1_endpoint_b=network.latent_texture_1.endpoint_b.to_numpy(),
+            lt1_alpha=network.latent_texture_1.alpha.to_numpy(),
+            lt2_endpoint_a=network.latent_texture_2.endpoint_a.to_numpy(),
+            lt2_endpoint_b=network.latent_texture_2.endpoint_b.to_numpy(),
+            lt2_alpha=network.latent_texture_2.alpha.to_numpy(),
+            lt3_endpoint_a=network.latent_texture_3.endpoint_a.to_numpy(),
+            lt3_endpoint_b=network.latent_texture_3.endpoint_b.to_numpy(),
+            lt3_alpha=network.latent_texture_3.alpha.to_numpy(),
+            lt4_endpoint_a=network.latent_texture_4.endpoint_a.to_numpy(),
+            lt4_endpoint_b=network.latent_texture_4.endpoint_b.to_numpy(),
+            lt4_alpha=network.latent_texture_4.alpha.to_numpy(),
+            layer0_biases=network.layer0.biases.to_numpy(),
+            layer0_weights=network.layer0.weights.to_numpy(),
+            layer1_biases=network.layer1.biases.to_numpy(),
+            layer1_weights=network.layer1.weights.to_numpy(),
+            layer2_biases=network.layer2.biases.to_numpy(),
+            layer2_weights=network.layer2.weights.to_numpy(),
+        )
+
 
 def eval(args, device, module):
     pass
@@ -280,6 +303,7 @@ train_parser.add_argument(
 )
 train_parser.add_argument("--size", dest="size", type=int)
 train_parser.add_argument("--steps", dest="steps", type=int, default=10_000)
+train_parser.add_argument("--output", dest="output")
 
 eval_parser = subparsers.add_parser("eval")
 
