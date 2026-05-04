@@ -7,38 +7,6 @@ import time
 import sys
 import argparse
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--srgb", dest="srgb", default=[], nargs="+", action="append")
-parser.add_argument("--nonsrgb", dest="nonsrgb", default=[], nargs="+", action="append")
-parser.add_argument("--size", dest="size", type=int, default=1024)
-parser.add_argument("--steps", dest="steps", type=int, default=10_000)
-args = parser.parse_args()
-
-filenames = [(filename, True) for filenames in args.srgb for filename in filenames] + [
-    (filename, False) for filenames in args.nonsrgb for filename in filenames
-]
-
-device = spy.create_device(
-    spy.DeviceType.automatic,
-    enable_debug_layers=True,
-    include_paths=[Path(__file__).parent],
-)
-print(device.features)
-module = spy.Module.load_from_file(device, "compress.slang")
-
-# Load some materials.
-data_path = Path(__file__).parent
-tex = []
-loader = spy.TextureLoader(device)
-for filepath, is_srgb in filenames:
-    opts = spy.TextureLoader.Options()
-    opts.load_as_srgb = is_srgb
-    opts.generate_mips = True
-    tex.append(loader.load_texture(filepath, options=opts))
-print(tex)
-tex_size = tex[0].width
-num_channels = len(tex) * 3
-
 
 class NetworkParameters(spy.InstanceList):
     def __init__(self, inputs: int, outputs: int):
@@ -162,49 +130,7 @@ class Network(spy.InstanceList):
         self.layer2.optimize(learning_rate, optimize_counter)
 
 
-network = Network(args.size, num_channels)
-
-# Train a batch of samples at a time. Smaller batches train faster, but are more "jittery"
-# A better strategy is to use small batches at the start, and slowly increase them over time
-batch_size = (64, 64)
-learning_rate = 0.001
-
-samp = device.create_sampler(spy.SamplerDesc())
-print(samp)
-
-for optimize_counter in range(args.steps):
-    module.calculate_grads(
-        seed=spy.wang_hash(seed=optimize_counter, warmup=2),
-        batch_index=spy.grid(batch_size),
-        batch_size=spy.int2(batch_size),
-        reference=tex,
-        network=network,
-        samp=samp,
-    )
-    network.optimize(learning_rate, optimize_counter + 1)
-
-    if optimize_counter == 0:
-        start = time.time()
-
-    if optimize_counter % 100 == 0:
-        print(f"{optimize_counter}")
-    if optimize_counter % 1000 == 0 or optimize_counter == args.steps - 1:
-        loss_output = spy.Tensor.from_numpy(device, np.zeros((1,)).astype("float32"))
-        module.sum_loss(
-            pixel=spy.grid((tex_size, tex_size)),
-            resolution=tex_size,
-            network=network,
-            reference=tex,
-            total=loss_output,
-            samp=samp,
-        )
-        mae = loss_output.to_numpy()[0] / tex_size / tex_size / num_channels
-        psnr = 10 * np.log10(1.0 / mae) if mae > 0 else float("inf")
-        print(f"Loss: {mae:.8f} PSNR: {psnr:.4f} dB")
-end = time.time()
-print(end - start)
-
-for mip in range(tex[0].mip_count):
+def render_to_tensor(device, module, network, num_channels, tex_size, mip):
     output = spy.Tensor.from_numpy(
         device,
         np.zeros((tex_size >> mip, tex_size >> mip, num_channels)).astype("float16"),
@@ -216,53 +142,156 @@ for mip in range(tex[0].mip_count):
         mip=mip,
         _result=output,
     )
-    output = output.to_numpy()
-    outputs = [output[:, :, i * 3 : (i + 1) * 3] for i in range(len(tex))]
-    for i, (_, is_srgb) in enumerate(filenames):
-        spy.Bitmap(outputs[i]).convert(
-            component_type=spy.Bitmap.ComponentType.uint8, srgb_gamma=is_srgb
-        ).write(f"{i}_m{mip}.png")
+    return output
 
 
-blocks = spy.Tensor.from_numpy(
-    device,
-    np.zeros((network.latent_texture_1.endpoint_a.shape[0] // 3, 4)).astype("uint16"),
-)
-module.compress_latent_texture(
-    texture=network.latent_texture_1, block=spy.call_id(), _result=blocks
-)
-desc = spy.TextureDesc()
-desc.width = network.latent_texture_1.size
-desc.height = network.latent_texture_1.size
-desc.format = spy.Format.bc1_unorm
-desc.usage = spy.TextureUsage.shader_resource
-desc.mip_count = network.latent_texture_1.num_mip_levels
-tex = device.create_texture(desc)
-offset = 0
-for mip in range(desc.mip_count):
-    size_in_blocks = desc.width >> 2 >> mip
-    tex.copy_from_numpy(
-        blocks.to_numpy()[offset : offset + size_in_blocks * size_in_blocks], mip=mip
+def compress_blocks(device, module, texture):
+    blocks = spy.Tensor.from_numpy(
+        device,
+        np.zeros((texture.endpoint_a.shape[0] // 3, 4)).astype("uint16"),
     )
-    offset += size_in_blocks * size_in_blocks
-
-ress = spy.Tensor.from_numpy(
-    device, np.zeros(((tex.width), (tex.width), 4)).astype("float32")
-)
+    module.compress_latent_texture(texture=texture, block=spy.call_id(), _result=blocks)
+    return blocks
 
 
-module.render_texture(
-    texture=tex,
-    pixel=spy.call_id(),
-    _result=ress,
-    samp=samp,
-    resolution=spy.int2(tex.width, tex.width),
+def train(args, device, module):
+    filenames = [
+        (filename, True) for filenames in args.srgb for filename in filenames
+    ] + [(filename, False) for filenames in args.nonsrgb for filename in filenames]
+
+    # Load some materials.
+    data_path = Path(__file__).parent
+    tex = []
+    loader = spy.TextureLoader(device)
+    for filepath, is_srgb in filenames:
+        opts = spy.TextureLoader.Options()
+        opts.load_as_srgb = is_srgb
+        opts.generate_mips = True
+        tex.append(loader.load_texture(filepath, options=opts))
+    print(tex)
+    tex_size = tex[0].width
+    num_channels = len(tex) * 3
+
+    network = Network(args.size, num_channels)
+
+    # Train a batch of samples at a time. Smaller batches train faster, but are more "jittery"
+    # A better strategy is to use small batches at the start, and slowly increase them over time
+    batch_size = (64, 64)
+    learning_rate = 0.001
+
+    samp = device.create_sampler(spy.SamplerDesc())
+    print(samp)
+
+    for optimize_counter in range(args.steps):
+        module.calculate_grads(
+            seed=spy.wang_hash(seed=optimize_counter, warmup=2),
+            batch_index=spy.grid(batch_size),
+            batch_size=spy.int2(batch_size),
+            reference=tex,
+            network=network,
+            samp=samp,
+        )
+        network.optimize(learning_rate, optimize_counter + 1)
+
+        if optimize_counter == 0:
+            start = time.time()
+
+        if optimize_counter % 100 == 0:
+            print(f"{optimize_counter}")
+        if optimize_counter % 1000 == 0 or optimize_counter == args.steps - 1:
+            loss_output = spy.Tensor.from_numpy(
+                device, np.zeros((1,)).astype("float32")
+            )
+            module.sum_loss(
+                pixel=spy.grid((tex_size, tex_size)),
+                resolution=tex_size,
+                network=network,
+                reference=tex,
+                total=loss_output,
+                samp=samp,
+            )
+            mae = loss_output.to_numpy()[0] / tex_size / tex_size / num_channels
+            psnr = 10 * np.log10(1.0 / mae) if mae > 0 else float("inf")
+            print(f"Loss: {mae:.8f} PSNR: {psnr:.4f} dB")
+    end = time.time()
+    print(end - start)
+
+    for mip in range(tex[0].mip_count):
+        output = render_to_tensor(
+            device, module, network, num_channels, tex_size, mip
+        ).to_numpy()
+        outputs = [output[:, :, i * 3 : (i + 1) * 3] for i in range(len(tex))]
+        for i, (_, is_srgb) in enumerate(filenames):
+            spy.Bitmap(outputs[i]).convert(
+                component_type=spy.Bitmap.ComponentType.uint8, srgb_gamma=is_srgb
+            ).write(f"{i}_m{mip}.png")
+
+    blocks = compress_blocks(device, module, network.latent_texture_1)
+    desc = spy.TextureDesc()
+    desc.width = network.latent_texture_1.size
+    desc.height = network.latent_texture_1.size
+    desc.format = spy.Format.bc1_unorm
+    desc.usage = spy.TextureUsage.shader_resource
+    desc.mip_count = network.latent_texture_1.num_mip_levels
+    tex_out = device.create_texture(desc)
+    offset = 0
+    for mip in range(desc.mip_count):
+        size_in_blocks = desc.width >> 2 >> mip
+        tex_out.copy_from_numpy(
+            blocks.to_numpy()[offset : offset + size_in_blocks * size_in_blocks],
+            mip=mip,
+        )
+        offset += size_in_blocks * size_in_blocks
+
+    ress = spy.Tensor.from_numpy(
+        device, np.zeros(((tex_out.width), (tex_out.width), 4)).astype("float32")
+    )
+
+    module.render_texture(
+        texture=tex_out,
+        pixel=spy.call_id(),
+        _result=ress,
+        samp=samp,
+        resolution=spy.int2(tex_out.width, tex_out.width),
+    )
+    spy.Bitmap(ress.to_numpy()).write(f"bc1.exr")
+    module.render_tensors(
+        texture=network.latent_texture_1,
+        pixel=spy.call_id(),
+        _result=ress,
+        resolution=spy.int2(tex_out.width, tex_out.width),
+    )
+    spy.Bitmap(ress.to_numpy()).write(f"tens.exr")
+
+
+def eval(args, device, module):
+    pass
+
+
+parser = argparse.ArgumentParser()
+subparsers = parser.add_subparsers(dest="mode", required=True)
+
+train_parser = subparsers.add_parser("train")
+train_parser.add_argument("--srgb", dest="srgb", default=[], nargs="+", action="append")
+train_parser.add_argument(
+    "--nonsrgb", dest="nonsrgb", default=[], nargs="+", action="append"
 )
-spy.Bitmap(ress.to_numpy()).write(f"bc1.exr")
-module.render_tensors(
-    texture=network.latent_texture_1,
-    pixel=spy.call_id(),
-    _result=ress,
-    resolution=spy.int2(tex.width, tex.width),
+train_parser.add_argument("--size", dest="size", type=int, default=1024)
+train_parser.add_argument("--steps", dest="steps", type=int, default=10_000)
+
+eval_parser = subparsers.add_parser("eval")
+
+args = parser.parse_args()
+
+device = spy.create_device(
+    spy.DeviceType.automatic,
+    enable_debug_layers=True,
+    include_paths=[Path(__file__).parent],
 )
-spy.Bitmap(ress.to_numpy()).write(f"tens.exr")
+print(device.features)
+module = spy.Module.load_from_file(device, "compress.slang")
+
+if args.mode == "train":
+    train(args, device, module)
+elif args.mode == "eval":
+    eval(args, device, module)
