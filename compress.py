@@ -87,7 +87,8 @@ class Network(spy.InstanceList):
             ]
         )
 
-        self.weights_and_biases = spy.Tensor.from_numpy(device, initial).with_grads()
+        self.weights_and_biases = spy.Tensor.from_numpy(device, initial)
+        self.weights_and_biases_grad = spy.Tensor.zeros_like(self.weights_and_biases)
         # Temp data for Adam optimizer.
         self.m = spy.Tensor.zeros_like(self.weights_and_biases)
         self.v = spy.Tensor.zeros_like(self.weights_and_biases)
@@ -100,7 +101,7 @@ class Network(spy.InstanceList):
         self.latent_texture_4.optimize(learning_rate, optimize_counter)
         module.optimizer_step(
             self.weights_and_biases,
-            self.weights_and_biases.grad,
+            self.weights_and_biases_grad,
             self.m,
             self.v,
             learning_rate,

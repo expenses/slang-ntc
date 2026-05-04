@@ -137,7 +137,18 @@ struct Network<int NumChannels> {
     LatentTexture latent_texture_2;
     LatentTexture latent_texture_3;
     LatentTexture latent_texture_4;
-    DiffTensor<float, 1> weights_and_biases;
+    Tensor<float, 1> weights_and_biases;
+    AtomicTensor<float, 1> weights_and_biases_grad;
+
+    float load(int index) {
+        return weights_and_biases.load(index);
+    }
+
+    [BackwardDerivativeOf(load)]
+    void load_bwd(int index, float grad)
+    {
+        weights_and_biases_grad.add(index, grad);
+    }
 
     [Differentiable]
     half[Outputs] forward<int Inputs, int Outputs>(half[Inputs] x, int offset) {
@@ -152,9 +163,9 @@ struct Network<int NumChannels> {
             half sum = half(0.0h);
             [ForceUnroll]
             for (int col = 0; col < Inputs; ++col) {
-                sum = fma(half(weights_and_biases.load(col * Outputs + row + offset)), x[col], sum);
+                sum = fma(half(load(col * Outputs + row + offset)), x[col], sum);
             }
-            y[row] = sum + half(weights_and_biases.load(Outputs * Inputs + row + offset));
+            y[row] = sum + half(load(Outputs * Inputs + row + offset));
         }
 
         return y;
