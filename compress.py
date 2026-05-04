@@ -172,6 +172,8 @@ def train(args, device, module):
     tex_size = tex[0].width
     num_channels = len(tex) * 3
 
+    args.size = args.size or tex_size
+
     network = Network(args.size, num_channels)
 
     # Train a batch of samples at a time. Smaller batches train faster, but are more "jittery"
@@ -276,7 +278,7 @@ train_parser.add_argument("--srgb", dest="srgb", default=[], nargs="+", action="
 train_parser.add_argument(
     "--nonsrgb", dest="nonsrgb", default=[], nargs="+", action="append"
 )
-train_parser.add_argument("--size", dest="size", type=int, default=1024)
+train_parser.add_argument("--size", dest="size", type=int)
 train_parser.add_argument("--steps", dest="steps", type=int, default=10_000)
 
 eval_parser = subparsers.add_parser("eval")
