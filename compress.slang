@@ -164,17 +164,30 @@ struct Network<int NumChannels> {
     LatentTexture latent_texture_2;
     LatentTexture latent_texture_3;
     LatentTexture latent_texture_4;
-    NetworkParameters<16, 64>  layer0;
+    NetworkParameters<16, 64> layer0;
     NetworkParameters<64, 64> layer1;
-    NetworkParameters<64, NumChannels>  layer2;
+    NetworkParameters<64, 16> layer2;
 
     [Differentiable]
-    half[NumChannels] eval(no_diff float2 uv, no_diff float mip_level) {
+    half[16] eval_from_inputs(half[16] inputs) {
+        half output0[64] = layer0.forward(inputs);
+        [ForceUnroll]
+        for (int i = 0; i < 64; ++i)
+            output0[i] = relu(output0[i]);
+        half output1[64] = layer1.forward(output0);
+        [ForceUnroll]
+        for (int i = 0; i < 64; ++i)
+            output1[i] = relu(output1[i]);
+        return layer2.forward(output1);
+    }
+
+    [Differentiable]
+    half[16] eval(no_diff float2 uv, no_diff float mip_level) {
         let s_1 = latent_texture_1.sample(uv, mip_level);
         let s_2 = latent_texture_2.sample(uv+0.5, mip_level);
         let s_3 = latent_texture_3.sample(uv, mip_level-1);
         let s_4 = latent_texture_4.sample(uv+0.5, mip_level-1);
-        half half_inputs[16] = {
+        half inputs[16] = {
             s_1[0],
             s_1[1],
             s_1[2],
@@ -192,15 +205,7 @@ struct Network<int NumChannels> {
             0.0h,
             0.0h
         };
-        half output0[64] = layer0.forward(half_inputs);
-        [ForceUnroll]
-        for (int i = 0; i < 64; ++i)
-            output0[i] = relu(output0[i]);
-        half output1[64] = layer1.forward(output0);
-        [ForceUnroll]
-        for (int i = 0; i < 64; ++i)
-            output1[i] = relu(output1[i]);
-        return layer2.forward(output1);
+        return eval_from_inputs(inputs);
     }
 }
 
@@ -209,7 +214,6 @@ half relu(half x) {
     return max(x, half(0.0));
 }
 
-// "Render" the neural texture
 half[NumChannels] render<int NumChannels>(
     int2 pixel,
     int resolution,
@@ -217,7 +221,12 @@ half[NumChannels] render<int NumChannels>(
     Network<NumChannels> network
 ) {
     float2 uv = (float2(pixel) + 0.5f) / float2(resolution);
-    return network.eval(uv, mip);
+    let eval = network.eval(uv, mip);
+    half[NumChannels] output;
+    for (int i = 0; i < NumChannels; ++i) {
+        output[i] = eval[i];
+    }
+    return output;
 }
 
 float[NumChannels] calculate_loss<int NumChannels>(
