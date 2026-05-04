@@ -109,13 +109,13 @@ class LatentTexture(spy.InstanceList):
 
 class Network(spy.InstanceList):
     def __init__(self, size, num_channels):
-        hidden_layer_size = 53
-        super().__init__(module[f"Network<{hidden_layer_size}, {num_channels}>"])
+        hidden_layer_size = 64
+        super().__init__(module[f"Network<{num_channels}>"])
         self.latent_texture_1 = LatentTexture(size)
         self.latent_texture_2 = LatentTexture(size)
         self.latent_texture_3 = LatentTexture(size // 2)
         self.latent_texture_4 = LatentTexture(size // 2)
-        self.layer0 = NetworkParameters(12, hidden_layer_size)
+        self.layer0 = NetworkParameters(16, hidden_layer_size)
         self.layer1 = NetworkParameters(hidden_layer_size, hidden_layer_size)
         self.layer2 = NetworkParameters(hidden_layer_size, num_channels)
 
@@ -268,6 +268,8 @@ def train(args, device, module):
     if args.output:
         np.savez(
             args.output,
+            size=network.latent_texture_1.size,
+            num_channels=num_channels,
             lt1_endpoint_a=network.latent_texture_1.endpoint_a.to_numpy(),
             lt1_endpoint_b=network.latent_texture_1.endpoint_b.to_numpy(),
             lt1_alpha=network.latent_texture_1.alpha.to_numpy(),
@@ -290,7 +292,40 @@ def train(args, device, module):
 
 
 def eval(args, device, module):
-    pass
+    data = np.load(args.input)
+
+    size = int(data["size"])
+    num_channels = int(data["num_channels"])
+
+    network = Network(size, num_channels)
+
+    def load_tensor(tensor, arr):
+        tensor.copy_from_numpy(arr.astype("float32"))
+
+    load_tensor(network.latent_texture_1.endpoint_a, data["lt1_endpoint_a"])
+    load_tensor(network.latent_texture_1.endpoint_b, data["lt1_endpoint_b"])
+    load_tensor(network.latent_texture_1.alpha, data["lt1_alpha"])
+    load_tensor(network.latent_texture_2.endpoint_a, data["lt2_endpoint_a"])
+    load_tensor(network.latent_texture_2.endpoint_b, data["lt2_endpoint_b"])
+    load_tensor(network.latent_texture_2.alpha, data["lt2_alpha"])
+    load_tensor(network.latent_texture_3.endpoint_a, data["lt3_endpoint_a"])
+    load_tensor(network.latent_texture_3.endpoint_b, data["lt3_endpoint_b"])
+    load_tensor(network.latent_texture_3.alpha, data["lt3_alpha"])
+    load_tensor(network.latent_texture_4.endpoint_a, data["lt4_endpoint_a"])
+    load_tensor(network.latent_texture_4.endpoint_b, data["lt4_endpoint_b"])
+    load_tensor(network.latent_texture_4.alpha, data["lt4_alpha"])
+    load_tensor(network.layer0.biases, data["layer0_biases"])
+    load_tensor(network.layer0.weights, data["layer0_weights"])
+    load_tensor(network.layer1.biases, data["layer1_biases"])
+    load_tensor(network.layer1.weights, data["layer1_weights"])
+    load_tensor(network.layer2.biases, data["layer2_biases"])
+    load_tensor(network.layer2.weights, data["layer2_weights"])
+
+    output = render_to_tensor(device, module, network, num_channels, size, 0).to_numpy()
+
+    spy.Bitmap(output).convert(
+        component_type=spy.Bitmap.ComponentType.uint8, srgb_gamma=True
+    ).write(args.output)
 
 
 parser = argparse.ArgumentParser()
@@ -306,6 +341,8 @@ train_parser.add_argument("--steps", dest="steps", type=int, default=10_000)
 train_parser.add_argument("--output", dest="output")
 
 eval_parser = subparsers.add_parser("eval")
+eval_parser.add_argument("--input", dest="input", required=True)
+eval_parser.add_argument("--output", dest="output", required=True)
 
 args = parser.parse_args()
 

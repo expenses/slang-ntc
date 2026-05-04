@@ -159,14 +159,14 @@ struct LatentTexture {
     }
 }
 
-struct Network<int HiddenLayerSize, int NumChannels> {
+struct Network<int NumChannels> {
     LatentTexture latent_texture_1;
     LatentTexture latent_texture_2;
     LatentTexture latent_texture_3;
     LatentTexture latent_texture_4;
-    NetworkParameters<12, HiddenLayerSize>  layer0;
-    NetworkParameters<HiddenLayerSize, HiddenLayerSize> layer1;
-    NetworkParameters<HiddenLayerSize, NumChannels>  layer2;
+    NetworkParameters<16, 64>  layer0;
+    NetworkParameters<64, 64> layer1;
+    NetworkParameters<64, NumChannels>  layer2;
 
     [Differentiable]
     half[NumChannels] eval(no_diff float2 uv, no_diff float mip_level) {
@@ -174,7 +174,7 @@ struct Network<int HiddenLayerSize, int NumChannels> {
         let s_2 = latent_texture_2.sample(uv+0.5, mip_level);
         let s_3 = latent_texture_3.sample(uv, mip_level-1);
         let s_4 = latent_texture_4.sample(uv+0.5, mip_level-1);
-        half half_inputs[12] = {
+        half half_inputs[16] = {
             s_1[0],
             s_1[1],
             s_1[2],
@@ -187,14 +187,18 @@ struct Network<int HiddenLayerSize, int NumChannels> {
             s_4[0],
             s_4[1],
             s_4[2],
+            0.0h,
+            0.0h,
+            0.0h,
+            0.0h
         };
-        half output0[HiddenLayerSize] = layer0.forward(half_inputs);
+        half output0[64] = layer0.forward(half_inputs);
         [ForceUnroll]
-        for (int i = 0; i < HiddenLayerSize; ++i)
+        for (int i = 0; i < 64; ++i)
             output0[i] = relu(output0[i]);
-        half output1[HiddenLayerSize] = layer1.forward(output0);
+        half output1[64] = layer1.forward(output0);
         [ForceUnroll]
-        for (int i = 0; i < HiddenLayerSize; ++i)
+        for (int i = 0; i < 64; ++i)
             output1[i] = relu(output1[i]);
         return layer2.forward(output1);
     }
@@ -206,22 +210,22 @@ half relu(half x) {
 }
 
 // "Render" the neural texture
-half[NumChannels] render<int HiddenLayerSize, int NumChannels>(
+half[NumChannels] render<int NumChannels>(
     int2 pixel,
     int resolution,
     int mip,
-    Network<HiddenLayerSize, NumChannels> network
+    Network<NumChannels> network
 ) {
     float2 uv = (float2(pixel) + 0.5f) / float2(resolution);
     return network.eval(uv, mip);
 }
 
-float[NumChannels] calculate_loss<int HiddenLayerSize, int NumChannels>(
+float[NumChannels] calculate_loss<int NumChannels>(
     int2 pixel,
     int resolution,
     Texture2D<float4>[] reference,
     SamplerState samp,
-    Network<HiddenLayerSize, NumChannels> network
+    Network<NumChannels> network
 ) {
     return loss(
         (float2(pixel) + 0.5f) / float2(resolution),
@@ -245,12 +249,12 @@ float3 L1(float3 value, float3 reference) {
 }
 
 [Differentiable]
-float[NumChannels] loss<int HiddenLayerSize, int NumChannels>(
+float[NumChannels] loss<int NumChannels>(
     no_diff float2 uv,
     no_diff float mip_level,
     Texture2D<float4>[] reference,
     SamplerState samp,
-    Network<HiddenLayerSize, NumChannels> network
+    Network<NumChannels> network
 ) {
     let color = network.eval(uv, mip_level);
     float[NumChannels] error;
@@ -319,12 +323,12 @@ void optimizer_step(
 }
 
 
-void sum_loss<int HiddenLayerSize, int NumChannels>(
+void sum_loss<int NumChannels>(
     int2 pixel,
     int resolution,
     Texture2D<float4>[] reference,
     SamplerState samp,
-    Network<HiddenLayerSize, NumChannels> network,
+    Network<NumChannels> network,
     AtomicTensor<float,1> total
 ) {
     let loss = loss(
@@ -344,13 +348,13 @@ void sum_loss<int HiddenLayerSize, int NumChannels>(
     }
 }
 
-void calculate_grads<int HiddenLayerSize, int NumChannels>(
+void calculate_grads<int NumChannels>(
     uint seed,
     int2 batch_index,
     int2 batch_size,
     Texture2D<float4>[] reference,
     SamplerState samp,
-    Network<HiddenLayerSize, NumChannels> network
+    Network<NumChannels> network
 ) {
     // Pick a random pixel for computing the loss
     // First, sample a random UV within our cell of the training batch grid
