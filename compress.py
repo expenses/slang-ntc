@@ -228,42 +228,42 @@ def train(args, device, module):
                 component_type=spy.Bitmap.ComponentType.uint8, srgb_gamma=is_srgb
             ).write(f"{i}_m{mip}.png")
 
-    blocks = compress_blocks(device, module, network.latent_texture_1)
-    desc = spy.TextureDesc()
-    desc.width = network.latent_texture_1.size
-    desc.height = network.latent_texture_1.size
-    desc.format = spy.Format.bc1_unorm
-    desc.usage = spy.TextureUsage.shader_resource
-    desc.mip_count = network.latent_texture_1.num_mip_levels
-    tex_out = device.create_texture(desc)
-    offset = 0
-    for mip in range(desc.mip_count):
-        size_in_blocks = desc.width >> 2 >> mip
-        tex_out.copy_from_numpy(
-            blocks.to_numpy()[offset : offset + size_in_blocks * size_in_blocks],
-            mip=mip,
-        )
-        offset += size_in_blocks * size_in_blocks
+    # blocks = compress_blocks(device, module, network.latent_texture_1)
+    # desc = spy.TextureDesc()
+    # desc.width = network.latent_texture_1.size
+    # desc.height = network.latent_texture_1.size
+    # desc.format = spy.Format.bc1_unorm
+    # desc.usage = spy.TextureUsage.shader_resource
+    # desc.mip_count = network.latent_texture_1.num_mip_levels
+    # tex_out = device.create_texture(desc)
+    # offset = 0
+    # for mip in range(desc.mip_count):
+    #     size_in_blocks = desc.width >> 2 >> mip
+    #     tex_out.copy_from_numpy(
+    #         blocks.to_numpy()[offset : offset + size_in_blocks * size_in_blocks],
+    #         mip=mip,
+    #     )
+    #     offset += size_in_blocks * size_in_blocks
 
-    ress = spy.Tensor.from_numpy(
-        device, np.zeros(((tex_out.width), (tex_out.width), 4)).astype("float32")
-    )
+    # ress = spy.Tensor.from_numpy(
+    #     device, np.zeros(((tex_out.width), (tex_out.width), 4)).astype("float32")
+    # )
 
-    module.render_texture(
-        texture=tex_out,
-        pixel=spy.call_id(),
-        _result=ress,
-        samp=samp,
-        resolution=spy.int2(tex_out.width, tex_out.width),
-    )
-    spy.Bitmap(ress.to_numpy()).write(f"bc1.exr")
-    module.render_tensors(
-        texture=network.latent_texture_1,
-        pixel=spy.call_id(),
-        _result=ress,
-        resolution=spy.int2(tex_out.width, tex_out.width),
-    )
-    spy.Bitmap(ress.to_numpy()).write(f"tens.exr")
+    # module.render_texture(
+    #     texture=tex_out,
+    #     pixel=spy.call_id(),
+    #     _result=ress,
+    #     samp=samp,
+    #     resolution=spy.int2(tex_out.width, tex_out.width),
+    # )
+    # spy.Bitmap(ress.to_numpy()).write(f"bc1.exr")
+    # module.render_tensors(
+    #     texture=network.latent_texture_1,
+    #     pixel=spy.call_id(),
+    #     _result=ress,
+    #     resolution=spy.int2(tex_out.width, tex_out.width),
+    # )
+    # spy.Bitmap(ress.to_numpy()).write(f"tens.exr")
 
 
 def eval(args, device, module):
