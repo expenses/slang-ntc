@@ -8,45 +8,6 @@ import sys
 import argparse
 
 
-class NetworkParameters(spy.InstanceList):
-    def __init__(self, inputs: int, outputs: int):
-        super().__init__(module[f"NetworkParameters<{inputs},{outputs}>"])
-        self.inputs = inputs
-        self.outputs = outputs
-
-        # Biases and weights for the layer.
-        self.biases = spy.Tensor.from_numpy(
-            device, np.zeros(outputs).astype("float32")
-        ).with_grads()
-        self.weights = spy.Tensor.from_numpy(
-            device, np.random.uniform(-0.5, 0.5, (outputs, inputs)).astype("float32")
-        ).with_grads()
-        # Temp data for Adam optimizer.
-        self.m_biases = spy.Tensor.zeros_like(self.biases)
-        self.m_weights = spy.Tensor.zeros_like(self.weights)
-        self.v_biases = spy.Tensor.zeros_like(self.biases)
-        self.v_weights = spy.Tensor.zeros_like(self.weights)
-
-    # Calls the Slang 'optimize' function for biases and weights
-    def optimize(self, learning_rate: float, optimize_counter: int):
-        module.optimizer_step(
-            self.biases,
-            self.biases.grad,
-            self.m_biases,
-            self.v_biases,
-            learning_rate,
-            optimize_counter,
-        )
-        module.optimizer_step(
-            self.weights,
-            self.weights.grad,
-            self.m_weights,
-            self.v_weights,
-            learning_rate,
-            optimize_counter,
-        )
-
-
 class LatentTexture(spy.InstanceList):
     def __init__(self, size: int):
         super().__init__(module["LatentTexture"])
@@ -114,9 +75,22 @@ class Network(spy.InstanceList):
         self.latent_texture_2 = LatentTexture(size)
         self.latent_texture_3 = LatentTexture(size // 2)
         self.latent_texture_4 = LatentTexture(size // 2)
-        self.layer0 = NetworkParameters(16, 64)
-        self.layer1 = NetworkParameters(64, 64)
-        self.layer2 = NetworkParameters(64, 16)
+
+        initial = np.concatenate(
+            [
+                np.random.uniform(-0.5, 0.5, 16 * 64).astype("float32"),
+                np.zeros(64).astype("float32"),
+                np.random.uniform(-0.5, 0.5, 64 * 64).astype("float32"),
+                np.zeros(64).astype("float32"),
+                np.random.uniform(-0.5, 0.5, 64 * 16).astype("float32"),
+                np.zeros(16).astype("float32"),
+            ]
+        )
+
+        self.weights_and_biases = spy.Tensor.from_numpy(device, initial).with_grads()
+        # Temp data for Adam optimizer.
+        self.m = spy.Tensor.zeros_like(self.weights_and_biases)
+        self.v = spy.Tensor.zeros_like(self.weights_and_biases)
 
     # Calls the Slang 'optimize' function for the layer.
     def optimize(self, learning_rate: float, optimize_counter: int):
@@ -124,9 +98,14 @@ class Network(spy.InstanceList):
         self.latent_texture_2.optimize(learning_rate, optimize_counter)
         self.latent_texture_3.optimize(learning_rate, optimize_counter)
         self.latent_texture_4.optimize(learning_rate, optimize_counter)
-        self.layer0.optimize(learning_rate, optimize_counter)
-        self.layer1.optimize(learning_rate, optimize_counter)
-        self.layer2.optimize(learning_rate, optimize_counter)
+        module.optimizer_step(
+            self.weights_and_biases,
+            self.weights_and_biases.grad,
+            self.m,
+            self.v,
+            learning_rate,
+            optimize_counter,
+        )
 
 
 def render_to_tensor(device, module, network, num_channels, tex_size, mip):
@@ -281,12 +260,7 @@ def train(args, device, module):
             lt4_endpoint_a=network.latent_texture_4.endpoint_a.to_numpy(),
             lt4_endpoint_b=network.latent_texture_4.endpoint_b.to_numpy(),
             lt4_alpha=network.latent_texture_4.alpha.to_numpy(),
-            layer0_biases=network.layer0.biases.to_numpy(),
-            layer0_weights=network.layer0.weights.to_numpy(),
-            layer1_biases=network.layer1.biases.to_numpy(),
-            layer1_weights=network.layer1.weights.to_numpy(),
-            layer2_biases=network.layer2.biases.to_numpy(),
-            layer2_weights=network.layer2.weights.to_numpy(),
+            weights_and_biases=network.weights_and_biases.to_numpy(),
         )
 
 

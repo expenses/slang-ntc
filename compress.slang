@@ -7,31 +7,25 @@ half fma(half a, half b, half c) {
     return a * b + c;
 }
 
-struct NetworkParameters<int Inputs, int Outputs> {
-    DiffTensor<float, 1> biases;
-    DiffTensor<float, 2> weights;
-
-    // Evaluate all neurons in the layer
-    [Differentiable]
-    half[Outputs] forward(half[Inputs] x) {
-        half[Outputs] y;
-        // For optimal runtime performance, using [ForceUnroll] here can be better. However, the downstream
-        // compiler on some platforms (in particular, the DXC compiler on D3D12) may not cope well with
-        // unrolled loops and compilation times grow exponentially. Using MaxIters on the outer loop
-        // here helps avoid this.
-        [MaxIters(Outputs)]
-        for (int row = 0; row < Outputs; ++row) {
-            // Sum up bias plus weighted inputs for 1 neuron
-            half sum = half(0.0h);
-            [ForceUnroll]
-            for (int col = 0; col < Inputs; ++col) {
-                sum = fma(half(weights.load(row, col)), x[col], sum);
-            }
-            y[row] = sum + half(biases.load(row));
+[Differentiable]
+half[Outputs] forward<int Inputs, int Outputs>(half[Inputs] x, DiffTensor<float, 1> weights_and_biases, int offset) {
+    half[Outputs] y;
+    // For optimal runtime performance, using [ForceUnroll] here can be better. However, the downstream
+    // compiler on some platforms (in particular, the DXC compiler on D3D12) may not cope well with
+    // unrolled loops and compilation times grow exponentially. Using MaxIters on the outer loop
+    // here helps avoid this.
+    [MaxIters(Outputs)]
+    for (int row = 0; row < Outputs; ++row) {
+        // Sum up bias plus weighted inputs for 1 neuron
+        half sum = half(0.0h);
+        [ForceUnroll]
+        for (int col = 0; col < Inputs; ++col) {
+            sum = fma(half(weights_and_biases.load(col * Outputs + row + offset)), x[col], sum);
         }
-
-        return y;
+        y[row] = sum + half(weights_and_biases.load(Outputs * Inputs + row + offset));
     }
+
+    return y;
 }
 
 uint16_t quantize(float value, uint16_t bits) {
@@ -164,21 +158,19 @@ struct Network<int NumChannels> {
     LatentTexture latent_texture_2;
     LatentTexture latent_texture_3;
     LatentTexture latent_texture_4;
-    NetworkParameters<16, 64> layer0;
-    NetworkParameters<64, 64> layer1;
-    NetworkParameters<64, 16> layer2;
+    DiffTensor<float, 1> weights_and_biases;
 
     [Differentiable]
     half[16] eval_from_inputs(half[16] inputs) {
-        half output0[64] = layer0.forward(inputs);
+        half output0[64] = forward<16, 64>(inputs, weights_and_biases, 0);
         [ForceUnroll]
         for (int i = 0; i < 64; ++i)
             output0[i] = relu(output0[i]);
-        half output1[64] = layer1.forward(output0);
+        half output1[64] = forward<64, 64>(output0, weights_and_biases, 16*64 + 64);
         [ForceUnroll]
         for (int i = 0; i < 64; ++i)
             output1[i] = relu(output1[i]);
-        return layer2.forward(output1);
+        return forward<64, 16>(output1, weights_and_biases, 16*64 + 64 + 64*64 + 64);
     }
 
     [Differentiable]
